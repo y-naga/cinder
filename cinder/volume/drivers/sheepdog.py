@@ -60,21 +60,35 @@ class SheepdogDriver(driver.VolumeDriver):
         self.stats_pattern = re.compile(r'[\w\s%]*Total\s(\d+)\s(\d+)*')
         self._stats = {}
 
+    def _sheep_args(self):
+        """Return options of address and port for connect to sheepdog."""
+        return ('--address', self.sheep_addr,
+                '--port', str(self.sheep_port))
+        
     def check_for_setup_error(self):
         """Return error if prerequisites aren't met."""
+        try:
+            # Confirm sheepdog command presence.
+            (out, _err) = self._execute('collie')
+        except processutils.ProcessExecutionError:
+            msg = _("Sheepdog command is not available.")
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(data=msg)
+
         try:
             # NOTE(francois-charlier) Since 0.24 'collie cluster info -r'
             # gives short output, but for compatibility reason we won't
             # use it and just check if 'running' is in the output.
-            (out, _err) = self._execute('collie', 'cluster', 'info')
+            cmd = ('collie', 'cluster', 'info') + self._sheep_args()
+            (out, _err) = self._execute(*cmd)
             if 'status: running' not in out:
-                exception_message = (_("Sheepdog is not working: %s") % out)
-                raise exception.VolumeBackendAPIException(
-                    data=exception_message)
-
+                msg = (_("Sheepdog is not working: %s") % out)
+                LOG.error(msg)
+                raise exception.VolumeBackendAPIException(data=msg)
         except processutils.ProcessExecutionError:
-            exception_message = _("Sheepdog is not working")
-            raise exception.VolumeBackendAPIException(data=exception_message)
+            msg = _("Sheepdog is not working.")
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(data=msg)
 
     def _is_cloneable(self, image_location, image_meta):
         """Check the image can be clone or not."""
@@ -153,9 +167,40 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def create_volume(self, volume):
         """Create a sheepdog volume."""
-        self._try_execute('qemu-img', 'create',
-                          "sheepdog:%s" % volume['name'],
-                          '%sG' % volume['size'])
+        # Validation volume size range
+        if volume['size'] <= 0 or volume['size'] > self.max_vdi_size:
+            msg = (_('Volume size:%(volume_size) is invalid. '
+                    'Volume size supports %(min_size)-%(max_size)') %
+                    {'volume_size': volume['size'], 
+                    'min_size': '0',
+                    'max_size': str(self.max_vdi_size)})
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(data=msg)
+
+        # Check volume already exist
+        # NOTE: When vdi is many, It may be heavy processing.
+        try:
+            cmd = ('collie', 'vdi', 'list', volume['name'])
+                    + self._sheep_args()
+            (out, _err) = self._execute(*cmd)
+            if out is not None:
+                msg = _("Volume %s is already exists." % volume['name'])
+                LOG.error(msg)
+        except processutils.ProcessExecutionError:
+            msg = _('Failed to get volume list.')
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(msg)
+
+        # Create new volume
+        try:
+            cmd = ('dog', 'vdi', 'create', volume['name'],
+                    '%sG' % volume['size']) + self._sheep_args()
+            self._try_execute(*cmd)
+        except processutils.ProcessExecutionError as e:
+            msg = _('Failed to create volume.'
+                    '%(volname)s') % {'volname': volume['name']}
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(data=msg)
 
     def create_volume_from_snapshot(self, volume, snapshot):
         """Create a sheepdog volume from a snapshot."""
@@ -165,8 +210,24 @@ class SheepdogDriver(driver.VolumeDriver):
                           "sheepdog:%s" % volume['name'],
                           '%sG' % volume['size'])
 
+
     def delete_volume(self, volume):
         """Delete a logical volume."""
+        # Check target volume exists
+        # NOTE: when vdi is many, It may be heavy processing.
+        try:
+            cmd = ('collie', 'vdi', 'list', volume['name'])
+                    + self._sheep_args()
+            (out, _err) = self._execute(*cmd)
+            if out is not None:
+                msg = _("Volume %s is not exists." % volume['name'])
+                LOG.error(msg)
+        except processutils.ProcessExecutionError:
+            msg = _('Failed to get volume list.')
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(msg)
+
+        # Delete volume
         self._delete(volume)
 
     def _resize(self, volume, size=None):
@@ -177,8 +238,14 @@ class SheepdogDriver(driver.VolumeDriver):
                           volume['name'], size)
 
     def _delete(self, volume):
-        self._try_execute('collie', 'vdi', 'delete',
-                          volume['name'])
+        try:
+            cmd = ('collie', 'vdi', 'delete', volume['name'])
+            self._try_execute(*cmd)
+        except processutils.ProcessExecutionError as e:
+            msg = _('Failed to delete volume.'
+                    '%(volname)s') % {'volname': volume['name']}
+            LOG.error(msg)
+            raise exception.VolumeBackendAPIException(data=msg)
 
     def copy_image_to_volume(self, context, volume, image_service, image_id):
         with image_utils.temporary_file() as tmp:
