@@ -34,9 +34,18 @@ from cinder.volume import driver
 
 LOG = logging.getLogger(__name__)
 
+sheepdog_opts = [
+    cfg.StrOpt('sheepdog_store_address', default='127.0.0.1',
+               help=_('IP address of sheep daemon.')),
+    cfg.IntOpt('sheepdog_store_port', default=7000,
+               help=_('Port of sheep daemon.')),
+    cfg.IntOpt('sheepdog_max_vdi_size', default=4096,
+               help=_('max vdi size.(GB)'))
+]
+
 CONF = cfg.CONF
 CONF.import_opt("image_conversion_dir", "cinder.image.image_utils")
-
+CONF.register_opts(sheepdog_opts)
 
 class SheepdogDriver(driver.VolumeDriver):
     """Executes commands relating to Sheepdog Volumes."""
@@ -45,6 +54,9 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def __init__(self, *args, **kwargs):
         super(SheepdogDriver, self).__init__(*args, **kwargs)
+        self.sheep_addr = self.configuration.sheepdog_store_address
+        self.sheep_port = self.configuration.sheepdog_store_port
+        self.max_vdi_size = self.configuration.sheepdog_max_vdi_size
         self.stats_pattern = re.compile(r'[\w\s%]*Total\s(\d+)\s(\d+)*')
         self._stats = {}
 
