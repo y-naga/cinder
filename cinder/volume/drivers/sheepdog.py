@@ -19,10 +19,12 @@ SheepDog Volume Driver.
 
 """
 import re
+import time
 
 from oslo_concurrency import processutils
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import excutils
 from oslo_utils import units
 
 from cinder import exception
@@ -59,6 +61,25 @@ class SheepdogDriver(driver.VolumeDriver):
         self.sheep_port = self.configuration.sheepdog_store_port
         self.stats_pattern = re.compile(r'[\w\s%]*Total\s(\d+)\s(\d+)*')
         self._stats = {}
+
+    def _command_execute(self, *command, **kwargs):
+        """Execution os command."""
+        is_retry = kwargs.pop('is_retry', False)
+        tries = 0
+        while tries:
+            try:
+                LOG.debug(_("sheepdog cmd: %s" %  " ".join(cmd)))
+                return self._execute(*command, **kwargs)
+            except processutils.ProcessExecutionError as e:
+                tries = tries + 1
+                if not is_retry or tries >= self.configuration.num_shell_tries:
+                    raise exception.SheepdogCmdException(cmd=e.cmd,
+                                               code=e.exit_code,
+                                               out=e.stdout.replace('\n', '\\n'),
+                                               err=e.stderr.replace('\n', '\\n'))
+                LOG.exception(_LE("Recovering from a failed execute. "
+                                  "Try number %s"), tries)
+                time.sleep(tries ** 2)
 
     def _sheep_args(self):
         """Return options of address and port for connect to sheepdog."""
