@@ -52,6 +52,9 @@ Cluster created at Tue Jun 25 19:51:41 2013
 Epoch Time           Version
 2013-06-25 19:51:41      1 [127.0.0.1:7000, 127.0.0.1:7001, 127.0.0.1:7002]
 """
+COLLIE_CLUSTER_INFO_WAITING_FORMAT = """
+Cluster status: Waiting for cluster to be formatted
+"""
 
 
 class FakeImageService(object):
@@ -103,16 +106,49 @@ class SheepdogTestCase(test.TestCase):
         self.assertDictMatch(expected, actual)
 
     def test_check_for_setup_error_0_5(self):
-        def fake_stats(*args):
+        def fake_stats(*command, **kwargs):
             return COLLIE_CLUSTER_INFO_0_5, ''
-        self.stubs.Set(self.driver, '_execute', fake_stats)
+        self.stubs.Set(self.driver, '_command_execute', fake_stats)
         self.driver.check_for_setup_error()
 
     def test_check_for_setup_error_0_6(self):
-        def fake_stats(*args):
+        def fake_stats(*command, **kwargs):
             return COLLIE_CLUSTER_INFO_0_6, ''
-        self.stubs.Set(self.driver, '_execute', fake_stats)
+        self.stubs.Set(self.driver, '_command_execute', fake_stats)
         self.driver.check_for_setup_error()
+
+    def test_check_for_setup_error_waiting_format(self):
+        def fake_stats(*command, **kwargs):
+            return COLLIE_CLUSTER_INFO_WAITING_FORMAT, ''
+        self.stubs.Set(self.driver, '_command_execute', fake_stats)
+        self.assertRaises(exception.VolumeBackendAPIException,
+            self.driver.check_for_setup_error)
+
+    def test_check_for_setup_error_cmd_notfound(self):
+        def fake_stats(*command, **kwargs):
+            raise exception.SheepdogCmdException(message='message',
+                    cmd='command', code=127, out='stdout', err='stderr')
+        self.stubs.Set(self.driver, '_command_execute', fake_stats)
+        self.assertRaises(exception.VolumeBackendAPIException,
+            self.driver.check_for_setup_error)
+
+    def test_check_for_setup_error_failed_connected(self):
+        def fake_stats(*command, **kwargs):
+            raise exception.SheepdogCmdException(message='message',
+                    cmd='command', code=2,
+                    out='failed to connect to 1.1.1.1', err='stderr')
+        self.stubs.Set(self.driver, '_command_execute', fake_stats)
+        self.assertRaises(exception.VolumeBackendAPIException,
+            self.driver.check_for_setup_error)
+
+    def test_check_for_setup_error_failed_uncatched(self):
+        def fake_stats(*command, **kwargs):
+            raise exception.SheepdogCmdException(message='message',
+                    cmd='command', code=2,
+                    out='other error.', err='stderr')
+        self.stubs.Set(self.driver, '_command_execute', fake_stats)
+        self.assertRaises(exception.SheepdogCmdException,
+            self.driver.check_for_setup_error)
 
     def test_copy_image_to_volume(self):
         @contextlib.contextmanager
