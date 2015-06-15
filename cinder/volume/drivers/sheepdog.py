@@ -89,27 +89,28 @@ class SheepdogDriver(driver.VolumeDriver):
     def check_for_setup_error(self):
         """Return error if prerequisites aren't met."""
         try:
-            # Confirm sheepdog command presence.
-            (out, _err) = self._execute('collie')
-        except processutils.ProcessExecutionError:
-            msg = _("Sheepdog command is not available.")
-            LOG.error(msg)
-            raise exception.VolumeBackendAPIException(data=msg)
-
-        try:
             # NOTE(francois-charlier) Since 0.24 'collie cluster info -r'
             # gives short output, but for compatibility reason we won't
             # use it and just check if 'running' is in the output.
-            cmd = ('collie', 'cluster', 'info') + self._sheep_args()
-            (out, _err) = self._execute(*cmd)
+            cmd = ('dog', 'cluster', 'info') + self._sheep_args()
+            (out, _) = self._command_execute(*cmd, is_retry=None)
             if 'status: running' not in out:
-                msg = (_("Sheepdog is not working: %s") % out)
+                msg = (_LE("Sheepdog status is not running: %s") % out)
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
-        except processutils.ProcessExecutionError:
-            msg = _("Sheepdog is not working.")
-            LOG.error(msg)
-            raise exception.VolumeBackendAPIException(data=msg)
+        except exception.SheepdogCmdException as e:
+            with excutils.save_and_reraise_exception():
+                if e.code == 127:
+                    msg = _LE('Sheepdog is not installed.')
+                    LOG.error(msg)
+                    raise exception.VolumeBackendAPIException(data=msg)
+                elif re.match('^failed to connect to', e.kwargs['err']):
+                    msg = _LE('Failed to connect sheep process.')
+                    LOG.error(msg)
+                    raise exception.VolumeBackendAPIException(data=msg)
+                else:
+                    LOG.error(_LE('Failed get sheepdog cluster info.'))
+                    raise
 
     def _is_cloneable(self, image_location, image_meta):
         """Check the image can be clone or not."""
