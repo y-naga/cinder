@@ -19,7 +19,6 @@ SheepDog Volume Driver.
 
 """
 import re
-import time
 
 from oslo_concurrency import processutils
 from oslo_config import cfg
@@ -64,22 +63,14 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def _command_execute(self, *command, **kwargs):
         """Execution os command."""
-        is_retry = kwargs.pop('is_retry', False)
-        tries = 0
-        while tries:
-            try:
-                LOG.debug(_("sheepdog cmd: %s" %  " ".join(cmd)))
-                return self._execute(*command, **kwargs)
-            except processutils.ProcessExecutionError as e:
-                tries = tries + 1
-                if not is_retry or tries >= self.configuration.num_shell_tries:
-                    raise exception.SheepdogCmdException(cmd=e.cmd,
-                                               code=e.exit_code,
-                                               out=e.stdout.replace('\n', '\\n'),
-                                               err=e.stderr.replace('\n', '\\n'))
-                LOG.exception(_LE("Recovering from a failed execute. "
-                                  "Try number %s"), tries)
-                time.sleep(tries ** 2)
+        try:
+            LOG.debug(_("sheepdog command: %s" %  " ".join(cmd)))
+            return self._execute(*command, **kwargs)
+        except processutils.ProcessExecutionError as e:
+            raise exception.SheepdogCmdException(cmd=e.cmd,
+                                       rc=e.exit_code,
+                                       out=e.stdout.replace('\n', '\\n'),
+                                       err=e.stderr.replace('\n', '\\n'))
 
     def _sheep_args(self):
         """Return options of address and port for connect to sheepdog."""
@@ -93,7 +84,7 @@ class SheepdogDriver(driver.VolumeDriver):
             # gives short output, but for compatibility reason we won't
             # use it and just check if 'running' is in the output.
             cmd = ('dog', 'cluster', 'info') + self._sheep_args()
-            (out, _) = self._command_execute(*cmd, is_retry=None)
+            (out, _) = self._command_execute(*cmd)
             if 'status: running' not in out:
                 msg = (_LE("Sheepdog status is not running: %s") % out)
                 LOG.error(msg)
