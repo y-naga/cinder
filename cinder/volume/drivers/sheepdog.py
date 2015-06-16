@@ -91,7 +91,7 @@ class SheepdogDriver(driver.VolumeDriver):
                 raise exception.VolumeBackendAPIException(data=msg)
         except exception.SheepdogCmdException as e:
             with excutils.save_and_reraise_exception():
-                if e.code == 127:
+                if e.kwargs['rc'] == 127:
                     msg = _LE('Sheepdog is not installed.')
                     LOG.error(msg)
                     raise exception.VolumeBackendAPIException(data=msg)
