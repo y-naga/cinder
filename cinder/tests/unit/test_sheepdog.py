@@ -15,6 +15,7 @@
 #    under the License.
 
 
+import re
 import contextlib
 
 import mock
@@ -24,11 +25,17 @@ from oslo_utils import units
 import six
 
 from cinder import exception
+from cinder.i18n import _, _LE
 from cinder.image import image_utils
 from cinder import test
 from cinder.volume import configuration as conf
 from cinder.volume.drivers import sheepdog
 
+
+SHEEP_ADDR = "127.0.0.1"
+SHEEP_PORT = 7000
+
+CMD_DOG_CLUSTER_INFO = ('dog', 'cluster', 'info', '--address', SHEEP_ADDR, '--port', str(SHEEP_PORT))
 
 COLLIE_NODE_INFO = """
 0 107287605248 3623897354 3%
@@ -67,6 +74,8 @@ class SheepdogTestCase(test.TestCase):
         super(SheepdogTestCase, self).setUp()
         self.driver = sheepdog.SheepdogDriver(
             configuration=conf.Configuration(None))
+        self.sheep_addr = '127.0.0.1'
+        self.sheep_port = 7000
 
         db_driver = self.driver.configuration.db_driver
         self.db = importutils.import_module(db_driver)
@@ -106,49 +115,62 @@ class SheepdogTestCase(test.TestCase):
         self.assertDictMatch(expected, actual)
 
     def test_check_for_setup_error_0_5(self):
-        def fake_stats(*command, **kwargs):
-            return COLLIE_CLUSTER_INFO_0_5, ''
-        self.stubs.Set(self.driver, '_command_execute', fake_stats)
-        self.driver.check_for_setup_error()
+        with mock.patch.object(self.driver, '_command_execute') as fake_command_execute:
+            fake_command_execute.return_value = (COLLIE_CLUSTER_INFO_0_5, '')
+            self.driver.check_for_setup_error()
+        fake_command_execute.assert_called_once_with(*CMD_DOG_CLUSTER_INFO)
 
     def test_check_for_setup_error_0_6(self):
-        def fake_stats(*command, **kwargs):
-            return COLLIE_CLUSTER_INFO_0_6, ''
-        self.stubs.Set(self.driver, '_command_execute', fake_stats)
-        self.driver.check_for_setup_error()
+        with mock.patch.object(self.driver, '_command_execute') as fake_command_execute:
+            fake_command_execute.return_value = (COLLIE_CLUSTER_INFO_0_6, '')
+            self.driver.check_for_setup_error()
+        fake_command_execute.assert_called_once_with(*CMD_DOG_CLUSTER_INFO)
 
     def test_check_for_setup_error_waiting_format(self):
-        def fake_stats(*command, **kwargs):
-            return COLLIE_CLUSTER_INFO_WAITING_FORMAT, ''
-        self.stubs.Set(self.driver, '_command_execute', fake_stats)
-        self.assertRaises(exception.VolumeBackendAPIException,
-            self.driver.check_for_setup_error)
+        with mock.patch.object(self.driver, '_command_execute') as fake_command_execute:
+            fake_command_execute.return_value = (COLLIE_CLUSTER_INFO_WAITING_FORMAT, '')
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                                    self.driver.check_for_setup_error)
+            self.assertTrue(re.match(r".*Sheepdog status is not running: "
+                            + COLLIE_CLUSTER_INFO_WAITING_FORMAT, ex.msg))
 
     def test_check_for_setup_error_cmd_notfound(self):
-        def fake_stats(*command, **kwargs):
-            raise exception.SheepdogCmdException(message='message',
-                    cmd='command', code=127, out='stdout', err='stderr')
-        self.stubs.Set(self.driver, '_command_execute', fake_stats)
-        self.assertRaises(exception.VolumeBackendAPIException,
-            self.driver.check_for_setup_error)
+        cmd = CMD_DOG_CLUSTER_INFO
+        rc = 127
+        out = ''
+        err = 'dog: command not found'
+        with mock.patch.object(self.driver, '_command_execute') as fake_command_execute:
+            fake_command_execute.side_effect=exception.SheepdogCmdException(
+                cmd=cmd, rc=rc, out=out, err=err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                                    self.driver.check_for_setup_error)
+            self.assertTrue(re.match(r".*Sheepdog is not installed.", ex.msg))
 
     def test_check_for_setup_error_failed_connected(self):
-        def fake_stats(*command, **kwargs):
-            raise exception.SheepdogCmdException(message='message',
-                    cmd='command', code=2,
-                    out='failed to connect to 1.1.1.1', err='stderr')
-        self.stubs.Set(self.driver, '_command_execute', fake_stats)
-        self.assertRaises(exception.VolumeBackendAPIException,
-            self.driver.check_for_setup_error)
+        cmd = CMD_DOG_CLUSTER_INFO
+        rc = 2
+        out = ''
+        err = 'failed to connect to 1.1.1.1'
+        with mock.patch.object(self.driver, '_command_execute') as fake_command_execute:
+            fake_command_execute.side_effect=exception.SheepdogCmdException(
+                cmd=cmd, rc=rc, out=out ,err=err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                                    self.driver.check_for_setup_error)
+            self.assertTrue(re.match(r".*Failed to connect sheep process.", ex.msg))
 
     def test_check_for_setup_error_failed_uncatched(self):
-        def fake_stats(*command, **kwargs):
-            raise exception.SheepdogCmdException(message='message',
-                    cmd='command', code=2,
-                    out='other error.', err='stderr')
-        self.stubs.Set(self.driver, '_command_execute', fake_stats)
-        self.assertRaises(exception.SheepdogCmdException,
-            self.driver.check_for_setup_error)
+        cmd = CMD_DOG_CLUSTER_INFO
+        rc = 1
+        out = 'stdout'
+        err = 'uncatched error'
+        expect_msg = _("Sheepdog driver command exception: %s "
+                "(Return Code: %s) (Stdout: %s).(Stderr: %s)" % (cmd, rc, out, err))
+        with mock.patch.object(self.driver, '_command_execute') as fake_command_execute:
+            fake_command_execute.side_effect=exception.SheepdogCmdException(
+                cmd=cmd, rc=rc, out=out, err=err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                                    self.driver.check_for_setup_error)
+            self.assertEqual(expect_msg, ex.msg)
 
     def test_copy_image_to_volume(self):
         @contextlib.contextmanager
