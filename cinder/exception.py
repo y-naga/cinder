@@ -916,4 +916,4 @@ class StorPoolConfigurationInvalid(CinderException):
 # Sheepdog
 class SheepdogCmdException(VolumeBackendAPIException):
     message = _("Sheepdog driver command exception: %(cmd)s "
-                "(Return Code: %(code)s) (Stdout: %(out)s).(Stderr: %(err)s)")
+                "(Return Code: %(rc)s) (Stdout: %(out)s).(Stderr: %(err)s)")
