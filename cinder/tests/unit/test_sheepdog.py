@@ -15,7 +15,6 @@
 #    under the License.
 
 
-import re
 import contextlib
 
 import mock
@@ -131,8 +130,8 @@ class SheepdogTestCase(test.TestCase):
             fake_command_execute.return_value = (COLLIE_CLUSTER_INFO_WAITING_FORMAT, '')
             ex = self.assertRaises(exception.VolumeBackendAPIException,
                                     self.driver.check_for_setup_error)
-            self.assertTrue(re.match(r".*Sheepdog status is not running: "
-                            + COLLIE_CLUSTER_INFO_WAITING_FORMAT, ex.msg))
+            self.assertIn('Sheepdog status is not running: '
+                            + COLLIE_CLUSTER_INFO_WAITING_FORMAT, ex.msg)
 
     def test_check_for_setup_error_cmd_notfound(self):
         cmd = CMD_DOG_CLUSTER_INFO
@@ -144,7 +143,7 @@ class SheepdogTestCase(test.TestCase):
                 cmd=cmd, rc=rc, out=out, err=err)
             ex = self.assertRaises(exception.VolumeBackendAPIException,
                                     self.driver.check_for_setup_error)
-            self.assertTrue(re.match(r".*Sheepdog is not installed.", ex.msg))
+            self.assertIn('Sheepdog is not installed.', ex.msg)
 
     def test_check_for_setup_error_failed_connected(self):
         cmd = CMD_DOG_CLUSTER_INFO
@@ -156,7 +155,7 @@ class SheepdogTestCase(test.TestCase):
                 cmd=cmd, rc=rc, out=out ,err=err)
             ex = self.assertRaises(exception.VolumeBackendAPIException,
                                     self.driver.check_for_setup_error)
-            self.assertTrue(re.match(r".*Failed to connect sheep process.", ex.msg))
+            self.assertIn('Failed to connect sheep process.', ex.msg)
 
     def test_check_for_setup_error_failed_uncatched(self):
         cmd = CMD_DOG_CLUSTER_INFO
