@@ -100,7 +100,7 @@ class SheepdogDriver(driver.VolumeDriver):
                     LOG.error(msg)
                     raise exception.VolumeBackendAPIException(data=msg)
                 else:
-                    LOG.error(_LE('Failed get sheepdog cluster info.'))
+                    LOG.error(_LE('Failed to get sheepdog cluster info.'))
                     raise
 
     def _is_cloneable(self, image_location, image_meta):
