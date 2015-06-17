@@ -64,7 +64,7 @@ class SheepdogDriver(driver.VolumeDriver):
     def _command_execute(self, *command, **kwargs):
         """Execution os command."""
         try:
-            LOG.debug(_("sheepdog command: %s" %  " ".join(cmd)))
+            LOG.debug(_('sheepdog command: %s' %  ' '.join(command)))
             return self._execute(*command, **kwargs)
         except processutils.ProcessExecutionError as e:
             raise exception.SheepdogCmdException(cmd=e.cmd,
@@ -86,22 +86,21 @@ class SheepdogDriver(driver.VolumeDriver):
             cmd = ('dog', 'cluster', 'info') + self._sheep_args()
             (out, _) = self._command_execute(*cmd)
             if 'status: running' not in out:
-                msg = (_LE("Sheepdog status is not running: %s") % out)
+                msg = (_LE('Sheepdog status is not running: %s') % out)
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
         except exception.SheepdogCmdException as e:
-            with excutils.save_and_reraise_exception():
-                if e.kwargs['rc'] == 127:
-                    msg = _LE('Sheepdog is not installed.')
-                    LOG.error(msg)
-                    raise exception.VolumeBackendAPIException(data=msg)
-                elif re.match('^failed to connect to', e.kwargs['err']):
-                    msg = _LE('Failed to connect sheep process.')
-                    LOG.error(msg)
-                    raise exception.VolumeBackendAPIException(data=msg)
-                else:
-                    LOG.error(_LE('Failed to get sheepdog cluster info.'))
-                    raise
+            if e.kwargs['rc'] == 127:
+                msg = _LE('Sheepdog is not installed.')
+                LOG.error(msg)
+                raise exception.VolumeBackendAPIException(data=msg)
+            elif re.match('^failed to connect to', e.kwargs['err']):
+                msg = _LE('Failed to connect sheep process.')
+                LOG.error(msg)
+                raise exception.VolumeBackendAPIException(data=msg)
+            else:
+                LOG.error(_LE('Failed to get sheepdog cluster info.'))
+                raise
 
     def _is_cloneable(self, image_location, image_meta):
         """Check the image can be clone or not."""
