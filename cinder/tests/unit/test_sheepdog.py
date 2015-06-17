@@ -435,6 +435,81 @@ class SheepdogTestCase(test.TestCase):
 
         self.mox.VerifyAll()
 
+    def test_create_volume_success(self):
+        with mock.patch.object(self.driver, '_command_execute') as \
+                fake_command_execute:
+            fake_command_execute.return_value = ('', '')
+            self.driver.create_volume(self.test_data.TEST_VOLUME)
+        fake_command_execute.assert_called_once_with(
+            *self.test_data.CMD_DOG_VDI_CREATE(
+                self.test_data.TEST_VOLUME['name'],
+                self.test_data.TEST_VOLUME['size']))
+
+    def test_create_volume_failed_vdi_already_exist(self):
+        cmd = self.test_data.CMD_DOG_VDI_CREATE(
+                self.test_data.TEST_VOLUME['name'],
+                self.test_data.TEST_VOLUME['size'])
+        rc = 1
+        out = ''
+        err = 'Failed to create VDI %s: VDI exists already' % \
+               self.test_data.TEST_VOLUME['name']
+        with mock.patch.object(self.driver, '_command_execute') as \
+                fake_command_execute:
+            fake_command_execute.side_effect = exception.SheepdogCmdException(
+                cmd = cmd, rc = rc, out = out, err = err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                    self.driver.create_volume, self.test_data.TEST_VOLUME)
+            self.assertIn('Volume already exists. %s' % \
+                self.test_data.TEST_VOLUME['name'], ex.msg)
+
+    def test_create_volume_failed_connected(self):
+        cmd = self.test_data.CMD_DOG_VDI_CREATE(
+                self.test_data.TEST_VOLUME['name'],
+                self.test_data.TEST_VOLUME['size'])
+        rc = 2
+        out = ''
+        err = 'failed to connect to 1.1.1.1'
+        with mock.patch.object(self.driver, '_command_execute') as \
+                fake_command_execute:
+            fake_command_execute.side_effect = exception.SheepdogCmdException(
+                cmd = cmd, rc = rc, out = out, err = err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                    self.driver.create_volume, self.test_data.TEST_VOLUME)
+            self.assertIn('Failed to connect sheep process.', ex.msg)
+
+    def test_create_volume_failed_diskfull(self):
+        cmd = self.test_data.CMD_DOG_VDI_CREATE(
+                self.test_data.TEST_VOLUME['name'],
+                self.test_data.TEST_VOLUME['size'])
+        rc = 1
+        out = ''
+        err = 'fail 8011111100000000, Server has no space for new objects'
+        with mock.patch.object(self.driver, '_command_execute') as \
+                fake_command_execute:
+            fake_command_execute.side_effect = exception.SheepdogCmdException(
+                cmd = cmd, rc = rc, out = out, err = err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                    self.driver.create_volume, self.test_data.TEST_VOLUME)
+            self.assertIn('Server has no space for new objects', ex.msg)
+
+    def test_create_volume_failed_uncatched(self):
+        cmd = self.test_data.CMD_DOG_VDI_CREATE(
+                self.test_data.TEST_VOLUME['name'],
+                self.test_data.TEST_VOLUME['size'])
+        rc = 1
+        out = 'stdout'
+        err = 'uncatched_err'
+        expect_msg = _('Sheepdog driver command exception: %s '
+                '(Return Code: %s) (Stdout: %s).(Stderr: %s)' % \
+                (cmd, rc, out, err))
+        with mock.patch.object(self.driver, '_command_execute') as \
+                fake_command_execute:
+            fake_command_execute.side_effect = exception.SheepdogCmdException(
+                cmd = cmd, rc = rc, out = out, err = err)
+            ex = self.assertRaises(exception.VolumeBackendAPIException,
+                    self.driver.create_volume, self.test_data.TEST_VOLUME)
+            self.assertEqual(expect_msg, ex.msg)
+
     def test_create_volume_from_snapshot(self):
         fake_name = u'volume-00000001'
         fake_size = '10'
