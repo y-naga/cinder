@@ -104,6 +104,35 @@ class SheepdogTestCase(test.TestCase):
         self.driver.do_setup(None)
         self.test_data = SheepdogDriverTestData()
 
+    def test_command_execute_success(self):
+        cmd = ('dog', 'vdi', 'create', 'sample', '1G')
+        with mock.patch.object(self.driver, '_execute') as fake_execute:
+            fake_execute.return_value = ('', '')
+            self.driver._command_execute(*cmd)
+        fake_execute.assert_called_once_with(*cmd)
+
+    def test_command_execute_failed(self):
+        cmd = ('dog', 'vdi', 'create', 'sample', '1G')
+        exit_code = 1
+        stdout = 'stdout\nline2\nline3'
+        stderr = 'stderr\nline2\nline3'
+        expect_stdout = 'stdout\\nline2\\nline3'
+        expect_stderr = 'stderr\\nline2\\nline3'
+        with mock.patch.object(self.driver, '_execute') as fake_execute:
+            fake_execute.side_effect = processutils.ProcessExecutionError(
+                cmd = cmd, exit_code = exit_code, stdout = stdout,
+                stderr = stderr)
+            ex = self.assertRaises(exception.SheepdogCmdException,
+                    self.driver._command_execute, *cmd)
+            self.assertEqual(cmd, ex.kwargs['cmd'])
+            self.assertEqual(exit_code, ex.kwargs['rc'])
+            self.assertEqual(expect_stdout, ex.kwargs['out'])
+            self.assertEqual(expect_stderr, ex.kwargs['err'])
+
+    def test_sheep_args(self):
+        args = ('--address', self.sheep_addr, '--port', str(self.sheep_port))
+        self.assertEqual(args, self.driver._sheep_args())
+
     def test_update_volume_stats(self):
         def fake_stats(*args):
             return COLLIE_NODE_INFO, ''
