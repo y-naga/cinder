@@ -31,7 +31,7 @@ from cinder.volume import configuration as conf
 from cinder.volume.drivers import sheepdog
 
 
-SHEEP_ADDR = "127.0.0.1"
+SHEEP_ADDR = '127.0.0.1'
 SHEEP_PORT = 7000
 
 COLLIE_NODE_INFO = """
@@ -94,7 +94,7 @@ class SheepdogTestCase(test.TestCase):
     def setUp(self):
         super(SheepdogTestCase, self).setUp()
         self.driver = sheepdog.SheepdogDriver(
-            configuration=conf.Configuration(None))
+            configuration = conf.Configuration(None))
         self.sheep_addr = '127.0.0.1'
         self.sheep_port = 7000
 
