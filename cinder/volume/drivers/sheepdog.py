@@ -215,21 +215,6 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def delete_volume(self, volume):
         """Delete a logical volume."""
-        # Check target volume exists
-        # NOTE: when vdi is many, It may be heavy processing.
-        try:
-            cmd = ('collie', 'vdi', 'list', volume['name'])
-                    + self._sheep_args()
-            (out, _err) = self._execute(*cmd)
-            if out is not None:
-                msg = _("Volume %s is not exists." % volume['name'])
-                LOG.error(msg)
-        except processutils.ProcessExecutionError:
-            msg = _('Failed to get volume list.')
-            LOG.error(msg)
-            raise exception.VolumeBackendAPIException(msg)
-
-        # Delete volume
         self._delete(volume)
 
     def _resize(self, volume, size=None):
