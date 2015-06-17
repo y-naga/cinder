@@ -34,14 +34,36 @@ from cinder.volume.drivers import sheepdog
 SHEEP_ADDR = "127.0.0.1"
 SHEEP_PORT = 7000
 
-CMD_DOG_CLUSTER_INFO = ('dog', 'cluster', 'info', '--address', SHEEP_ADDR, '--port', str(SHEEP_PORT))
-
 COLLIE_NODE_INFO = """
 0 107287605248 3623897354 3%
 Total 107287605248 3623897354 3% 54760833024
 """
 
-COLLIE_CLUSTER_INFO_0_5 = """
+class SheepdogDriverTestData(object):
+    def CMD_DOG_CLUSTER_INFO(self):
+        return ('dog', 'cluster', 'info', '--address', SHEEP_ADDR, '--port',
+                str(SHEEP_PORT))
+
+    def CMD_DOG_VDI_CREATE(self, name, size):
+        return ('dog', 'vdi', 'create', name, '%sG' % size , '--address',
+                SHEEP_ADDR, '--port', str(SHEEP_PORT))
+
+    TEST_VOLUME = {
+        'name': 'volume-00000001',
+        'size': 1,
+        'volume_name': '1',
+        'id': 'a720b3c0-d1f0-11e1-9b23-0800200c9a66',
+        'provider_auth': None,
+        'host': 'host@backendsec#unit_test_pool',
+        'project_id': 'project',
+        'provider_location': 'location',
+        'display_name': 'vol1',
+        'display_description': 'unit test volume',
+        'volume_type_id': None,
+        'consistencygroup_id': None
+    }
+
+    COLLIE_CLUSTER_INFO_0_5 = """
 Cluster status: running
 
 Cluster created at Tue Jun 25 19:51:41 2013
@@ -50,7 +72,7 @@ Epoch Time           Version
 2013-06-25 19:51:41      1 [127.0.0.1:7000, 127.0.0.1:7001, 127.0.0.1:7002]
 """
 
-COLLIE_CLUSTER_INFO_0_6 = """
+    COLLIE_CLUSTER_INFO_0_6 = """
 Cluster status: running, auto-recovery enabled
 
 Cluster created at Tue Jun 25 19:51:41 2013
@@ -58,10 +80,10 @@ Cluster created at Tue Jun 25 19:51:41 2013
 Epoch Time           Version
 2013-06-25 19:51:41      1 [127.0.0.1:7000, 127.0.0.1:7001, 127.0.0.1:7002]
 """
-COLLIE_CLUSTER_INFO_WAITING_FORMAT = """
+
+    COLLIE_CLUSTER_INFO_WAITING_FORMAT = """
 Cluster status: Waiting for cluster to be formatted
 """
-
 
 class FakeImageService(object):
     def download(self, context, image_id, path):
@@ -80,6 +102,7 @@ class SheepdogTestCase(test.TestCase):
         self.db = importutils.import_module(db_driver)
         self.driver.db = self.db
         self.driver.do_setup(None)
+        self.test_data = SheepdogDriverTestData()
 
     def test_update_volume_stats(self):
         def fake_stats(*args):
