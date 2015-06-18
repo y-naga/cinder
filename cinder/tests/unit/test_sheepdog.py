@@ -527,7 +527,8 @@ class SheepdogTestCase(test.TestCase):
                 cmd = cmd, rc = rc, out = out, err = err)
             ex = self.assertRaises(exception.VolumeBackendAPIException,
                     self.driver.create_volume, self.test_data.TEST_VOLUME)
-            self.assertIn('Server has no space for new objects', ex.msg)
+            self.assertIn('Failed to create volume for diskfull occurs ' \
+                    'in datastore.', ex.msg)
 
     def test_create_volume_failed_uncatched(self):
         cmd = self.test_data.CMD_DOG_VDI_CREATE(

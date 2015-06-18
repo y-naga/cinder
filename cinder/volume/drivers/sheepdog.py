@@ -207,7 +207,7 @@ class SheepdogDriver(driver.VolumeDriver):
                 msg = _LE('Failed to connect sheep process.')
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
-            elif re.match('Server has no space for new objects$',
+            elif re.search('Server has no space for new objects$',
                     e.kwargs['err']):
                 msg = _LE('Failed to create volume for diskfull occurs ' \
                     'in datastore.')
