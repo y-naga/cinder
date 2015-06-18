@@ -108,8 +108,8 @@ class SheepdogTestCase(test.TestCase):
         super(SheepdogTestCase, self).setUp()
         self.driver = sheepdog.SheepdogDriver(
             configuration = conf.Configuration(None))
-        self.sheep_addr = '127.0.0.1'
-        self.sheep_port = 7000
+        self.sheep_addr = SHEEP_ADDR
+        self.sheep_port = SHEEP_PORT
 
         db_driver = self.driver.configuration.db_driver
         self.db = importutils.import_module(db_driver)
