@@ -225,7 +225,6 @@ class SheepdogDriver(driver.VolumeDriver):
                           "sheepdog:%s" % volume['name'],
                           '%sG' % volume['size'])
 
-
     def delete_volume(self, volume):
         """Delete a logical volume."""
         self._delete(volume)
@@ -238,14 +237,8 @@ class SheepdogDriver(driver.VolumeDriver):
                           volume['name'], size)
 
     def _delete(self, volume):
-        try:
-            cmd = ('collie', 'vdi', 'delete', volume['name'])
-            self._try_execute(*cmd)
-        except processutils.ProcessExecutionError as e:
-            msg = _('Failed to delete volume.'
-                    '%(volname)s') % {'volname': volume['name']}
-            LOG.error(msg)
-            raise exception.VolumeBackendAPIException(data=msg)
+        self._try_execute('collie', 'vdi', 'delete',
+                          volume['name'])
 
     def copy_image_to_volume(self, context, volume, image_service, image_id):
         with image_utils.temporary_file() as tmp:
