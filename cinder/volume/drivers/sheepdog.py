@@ -23,7 +23,6 @@ import re
 from oslo_concurrency import processutils
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_utils import excutils
 from oslo_utils import units
 
 from cinder import exception
@@ -49,6 +48,7 @@ CONF = cfg.CONF
 CONF.import_opt("image_conversion_dir", "cinder.image.image_utils")
 CONF.register_opts(sheepdog_opts)
 
+
 class SheepdogDriver(driver.VolumeDriver):
     """Executes commands relating to Sheepdog Volumes."""
 
@@ -64,19 +64,18 @@ class SheepdogDriver(driver.VolumeDriver):
     def _command_execute(self, *command, **kwargs):
         """Execution os command."""
         try:
-            LOG.debug(_('sheepdog command: %s' %  ' '.join(command)))
+            LOG.debug('sheepdog command: %s' % ' '.join(command))
             return self._execute(*command, **kwargs)
         except processutils.ProcessExecutionError as e:
-            raise exception.SheepdogCmdException(cmd=e.cmd,
-                                       rc=e.exit_code,
-                                       out=e.stdout.replace('\n', '\\n'),
-                                       err=e.stderr.replace('\n', '\\n'))
+            raise exception.SheepdogCmdException(
+                cmd=e.cmd, rc=e.exit_code, out=e.stdout.replace('\n', '\\n'),
+                err=e.stderr.replace('\n', '\\n'))
 
     def _sheep_args(self):
         """Return options of address and port for connect to sheepdog."""
         return ('--address', self.sheep_addr,
                 '--port', str(self.sheep_port))
-        
+
     def check_for_setup_error(self):
         """Return error if prerequisites aren't met."""
         try:

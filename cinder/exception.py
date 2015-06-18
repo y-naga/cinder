@@ -913,7 +913,8 @@ class StorPoolConfigurationInvalid(CinderException):
     message = _("Invalid parameter %(param)s in the %(section)s section "
                 "of the /etc/storpool.conf file: %(error)s")
 
+
 # Sheepdog
 class SheepdogCmdException(VolumeBackendAPIException):
     message = _("Sheepdog driver command exception: %(cmd)s "
-                "(Return Code: %(rc)s) (Stdout: %(out)s).(Stderr: %(err)s)")
+                "(Return Code: %(rc)s) (Stdout: %(out)s) (Stderr: %(err)s)")

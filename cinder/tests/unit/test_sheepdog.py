@@ -24,7 +24,7 @@ from oslo_utils import units
 import six
 
 from cinder import exception
-from cinder.i18n import _, _LE
+from cinder.i18n import _
 from cinder.image import image_utils
 from cinder import test
 from cinder.volume import configuration as conf
@@ -39,6 +39,7 @@ COLLIE_NODE_INFO = """
 Total 107287605248 3623897354 3% 54760833024
 """
 
+
 class SheepdogDriverTestData(object):
     def CMD_DOG_CLUSTER_INFO(self):
         return ('dog', 'cluster', 'info', '--address', SHEEP_ADDR, '--port',
@@ -47,6 +48,12 @@ class SheepdogDriverTestData(object):
     def CMD_DOG_VDI_CREATE(self, name, size):
         return ('dog', 'vdi', 'create', name, '%sG' % size , '--address',
                 SHEEP_ADDR, '--port', str(SHEEP_PORT))
+
+    def MSG_SHEEPDOGCMDEXCEPTION(self, cmd, rc, out, err):
+        return _('Sheepdog driver command exception: %(cmd)s '
+                 '(Return Code: %(rc)s) (Stdout: %(out)s) '
+                 '(Stderr: %(err)s)') % \
+            {'cmd': cmd, 'rc': rc, 'out': out, 'err': err}
 
     TEST_VOLUME = {
         'name': 'volume-00000001',
@@ -98,6 +105,7 @@ Epoch Time           Version [Host:Port:V-Nodes,,,]
 Cluster status: System error
 """
 
+
 class FakeImageService(object):
     def download(self, context, image_id, path):
         pass
@@ -107,10 +115,9 @@ class SheepdogTestCase(test.TestCase):
     def setUp(self):
         super(SheepdogTestCase, self).setUp()
         self.driver = sheepdog.SheepdogDriver(
-            configuration = conf.Configuration(None))
+            configuration=conf.Configuration(None))
         self.sheep_addr = SHEEP_ADDR
         self.sheep_port = SHEEP_PORT
-
         db_driver = self.driver.configuration.db_driver
         self.db = importutils.import_module(db_driver)
         self.driver.db = self.db
@@ -133,10 +140,9 @@ class SheepdogTestCase(test.TestCase):
         expect_stderr = 'stderr\\nline2\\nline3'
         with mock.patch.object(self.driver, '_execute') as fake_execute:
             fake_execute.side_effect = processutils.ProcessExecutionError(
-                cmd = cmd, exit_code = exit_code, stdout = stdout,
-                stderr = stderr)
+                cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
             ex = self.assertRaises(exception.SheepdogCmdException,
-                    self.driver._command_execute, *cmd)
+                                   self.driver._command_execute, *cmd)
             self.assertEqual(cmd, ex.kwargs['cmd'])
             self.assertEqual(exit_code, ex.kwargs['rc'])
             self.assertEqual(expect_stdout, ex.kwargs['out'])
