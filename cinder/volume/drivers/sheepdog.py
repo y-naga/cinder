@@ -194,7 +194,7 @@ class SheepdogDriver(driver.VolumeDriver):
         """Create a sheepdog volume."""
         try:
             cmd = ('dog', 'vdi', 'create', volume['name'],
-                    '%sG' % volume['size']) + self._sheep_args()
+                   '%sG' % volume['size']) + self._sheep_args()
             self._command_execute(*cmd)
         except exception.SheepdogCmdException as e:
             if re.match('^Failed to create VDI .*: VDI exists already',
@@ -207,13 +207,13 @@ class SheepdogDriver(driver.VolumeDriver):
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
             elif re.search('Server has no space for new objects$',
-                    e.kwargs['err']):
-                msg = _LE('Failed to create volume for diskfull occurs ' \
-                    'in datastore.')
+                           e.kwargs['err']):
+                msg = _LE('Failed to create volume for diskfull occurs '
+                          'in datastore.')
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
             else:
-                msg = _LE('Failed to create volume. %s' % volume['name'])
+                msg = _LE('Failed to create volume. %s') % volume['name']
                 LOG.error(msg)
                 raise
 
