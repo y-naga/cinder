@@ -85,8 +85,22 @@ class SheepdogDriver(driver.VolumeDriver):
             # use it and just check if 'running' is in the output.
             cmd = ('dog', 'cluster', 'info') + self._sheep_args()
             (out, _) = self._command_execute(*cmd)
-            if 'status: running' not in out:
-                msg = (_LE('Sheepdog status is not running: %s') % out)
+            if re.match('^Cluster status: running', out):
+                LOG.debug('Sheepdog cluster is running.')
+            elif re.match('^Cluster status: Waiting for cluster to be ' \
+                    'formatted', out):
+                msg = (_LE('Sheepdog cluster is not formatted. ' \
+                        'Please format the Sheepdog cluster.'))
+                LOG.error(msg)
+                raise exception.VolumeBackendAPIException(data=msg)
+            elif re.match('^Cluster status: Waiting for other nodes to ' \
+                    'join cluster', out):
+                msg = (_LE('All nodes does not join to Sheepdog cluster. ' \
+                        'Please start sheep process of all nodes.'))
+                LOG.error(msg)
+                raise exception.VolumeBackendAPIException(data=msg)
+            else:
+                msg = (_LE('Sheepdog cluster is not running. %s') % out)
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
         except exception.SheepdogCmdException as e:
