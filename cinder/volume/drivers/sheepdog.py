@@ -86,16 +86,16 @@ class SheepdogDriver(driver.VolumeDriver):
             (out, _) = self._command_execute(*cmd)
             if re.match('^Cluster status: running', out):
                 LOG.debug('Sheepdog cluster is running.')
-            elif re.match('^Cluster status: Waiting for cluster to be ' \
-                    'formatted', out):
-                msg = (_LE('Sheepdog cluster is not formatted. ' \
-                        'Please format the Sheepdog cluster.'))
+            elif re.match('^Cluster status: Waiting for cluster to be '
+                          'formatted', out):
+                msg = (_LE('Sheepdog cluster is not formatted. '
+                           'Please format the Sheepdog cluster.'))
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
-            elif re.match('^Cluster status: Waiting for other nodes to ' \
-                    'join cluster', out):
-                msg = (_LE('All nodes does not join to Sheepdog cluster. ' \
-                        'Please start sheep process of all nodes.'))
+            elif re.match('^Cluster status: Waiting for other nodes to '
+                          'join cluster', out):
+                msg = (_LE('All nodes does not join to Sheepdog cluster. '
+                           'Please start sheep process of all nodes.'))
                 LOG.error(msg)
                 raise exception.VolumeBackendAPIException(data=msg)
             else:

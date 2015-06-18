@@ -70,7 +70,7 @@ class SheepdogDriverTestData(object):
         'consistencygroup_id': None
     }
 
-    COLLIE_CLUSTER_INFO_0_5 = """\
+    OUT_DOG_CLUSTER_INFO_0_5 = """\
 Cluster status: running
 
 Cluster created at Tue Jun 25 19:51:41 2013
@@ -79,7 +79,7 @@ Epoch Time           Version
 2013-06-25 19:51:41      1 [127.0.0.1:7000, 127.0.0.1:7001, 127.0.0.1:7002]
 """
 
-    COLLIE_CLUSTER_INFO_0_6 = """\
+    OUT_DOG_CLUSTER_INFO_0_6 = """\
 Cluster status: running, auto-recovery enabled
 
 Cluster created at Tue Jun 25 19:51:41 2013
@@ -88,11 +88,11 @@ Epoch Time           Version
 2013-06-25 19:51:41      1 [127.0.0.1:7000, 127.0.0.1:7001, 127.0.0.1:7002]
 """
 
-    COLLIE_CLUSTER_INFO_WAITING_FORMAT = """\
+    OUT_DOG_CLUSTER_INFO_WAITING_FORMAT = """\
 Cluster status: Waiting for cluster to be formatted
 """
 
-    COLLIE_CLUSTER_INFO_WAITING_OTHER_NODES = """\
+    OUT_DOG_CLUSTER_INFO_WAITING_OTHER_NODES = """\
 Cluster status: Waiting for other nodes to join cluster
 
 Cluster created at Thu Jun 18 10:28:34 2015
@@ -101,7 +101,7 @@ Epoch Time           Version [Host:Port:V-Nodes,,,]
 2015-06-18 10:28:34      1 [127.0.0.1:7000:128, 127.0.0.1:7001:128]
 """
 
-    COLLIE_CLUSTER_INFO_SYSTEM_ERROR = """\
+    OUT_DOG_CLUSTER_INFO_SYSTEM_ERROR = """\
 Cluster status: System error
 """
 
@@ -189,7 +189,7 @@ class SheepdogTestCase(test.TestCase):
                 fake_command_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_command_execute.return_value = (
-                    self.test_data.COLLIE_CLUSTER_INFO_0_5, '')
+                    self.test_data.OUT_DOG_CLUSTER_INFO_0_5, '')
                 self.driver.check_for_setup_error()
         fake_command_execute.assert_called_once_with(
             *self.test_data.CMD_DOG_CLUSTER_INFO())
@@ -200,7 +200,7 @@ class SheepdogTestCase(test.TestCase):
                 fake_command_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_command_execute.return_value = (
-                    self.test_data.COLLIE_CLUSTER_INFO_0_6, '')
+                    self.test_data.OUT_DOG_CLUSTER_INFO_0_6, '')
                 self.driver.check_for_setup_error()
         fake_command_execute.assert_called_once_with(
             *self.test_data.CMD_DOG_CLUSTER_INFO())
@@ -210,31 +210,32 @@ class SheepdogTestCase(test.TestCase):
         with mock.patch.object(self.driver, '_command_execute') as \
                 fake_command_execute:
             fake_command_execute.return_value = (
-                self.test_data.COLLIE_CLUSTER_INFO_WAITING_FORMAT, '')
+                self.test_data.OUT_DOG_CLUSTER_INFO_WAITING_FORMAT, '')
             ex = self.assertRaises(exception.VolumeBackendAPIException,
-                    self.driver.check_for_setup_error)
-            self.assertIn('Sheepdog cluster is not formatted. ' \
-                        'Please format the Sheepdog cluster.', ex.msg)
+                                   self.driver.check_for_setup_error)
+            self.assertIn('Sheepdog cluster is not formatted. '
+                          'Please format the Sheepdog cluster.', ex.msg)
 
     def test_check_for_setup_error_waiting_other_nodes(self):
         with mock.patch.object(self.driver, '_command_execute') as \
                 fake_command_execute:
             fake_command_execute.return_value = (
-                self.test_data.COLLIE_CLUSTER_INFO_WAITING_OTHER_NODES, '')
+                self.test_data.OUT_DOG_CLUSTER_INFO_WAITING_OTHER_NODES, '')
             ex = self.assertRaises(exception.VolumeBackendAPIException,
-                    self.driver.check_for_setup_error)
-            self.assertIn('All nodes does not join to Sheepdog cluster. ' \
-                        'Please start sheep process of all nodes.', ex.msg)
+                                   self.driver.check_for_setup_error)
+            self.assertIn('All nodes does not join to Sheepdog cluster. '
+                          'Please start sheep process of all nodes.', ex.msg)
 
     def test_check_for_setup_error_shutting_down(self):
         with mock.patch.object(self.driver, '_command_execute') as \
                 fake_command_execute:
             fake_command_execute.return_value = (
-                self.test_data.COLLIE_CLUSTER_INFO_SYSTEM_ERROR, '')
+                self.test_data.OUT_DOG_CLUSTER_INFO_SYSTEM_ERROR, '')
             ex = self.assertRaises(exception.VolumeBackendAPIException,
-                    self.driver.check_for_setup_error)
-            self.assertIn('Sheepdog cluster is not running. %s' % \
-                    self.test_data.COLLIE_CLUSTER_INFO_SYSTEM_ERROR, ex.msg)
+                                   self.driver.check_for_setup_error)
+            self.assertIn('Sheepdog cluster is not running. %s' %
+                          self.test_data.OUT_DOG_CLUSTER_INFO_SYSTEM_ERROR,
+                          ex.msg)
 
     def test_check_for_setup_error_cmd_notfound(self):
         cmd = self.test_data.CMD_DOG_CLUSTER_INFO
@@ -244,9 +245,9 @@ class SheepdogTestCase(test.TestCase):
         with mock.patch.object(self.driver, '_command_execute') as \
                 fake_command_execute:
             fake_command_execute.side_effect = exception.SheepdogCmdException(
-                cmd = cmd, rc = rc, out = out, err = err)
+                cmd=cmd, rc=rc, out=out, err=err)
             ex = self.assertRaises(exception.VolumeBackendAPIException,
-                    self.driver.check_for_setup_error)
+                                   self.driver.check_for_setup_error)
             self.assertIn('Sheepdog is not installed.', ex.msg)
 
     def test_check_for_setup_error_failed_connected(self):
@@ -257,9 +258,9 @@ class SheepdogTestCase(test.TestCase):
         with mock.patch.object(self.driver, '_command_execute') as \
                 fake_command_execute:
             fake_command_execute.side_effect = exception.SheepdogCmdException(
-                cmd = cmd, rc = rc, out = out, err = err)
+                cmd=cmd, rc=rc, out=out, err=err)
             ex = self.assertRaises(exception.VolumeBackendAPIException,
-                    self.driver.check_for_setup_error)
+                                   self.driver.check_for_setup_error)
             self.assertIn('Failed to connect sheep process.', ex.msg)
 
     def test_check_for_setup_error_failed_uncatched(self):
@@ -267,15 +268,13 @@ class SheepdogTestCase(test.TestCase):
         rc = 1
         out = 'stdout'
         err = 'uncatched error'
-        expect_msg = _('Sheepdog driver command exception: %s '
-            '(Return Code: %s) (Stdout: %s).(Stderr: %s)' % \
-            (cmd, rc, out, err))
+        expect_msg = self.test_data.MSG_SHEEPDOGCMDEXCEPTION(cmd, rc, out, err)
         with mock.patch.object(self.driver, '_command_execute') as \
                 fake_command_execute:
             fake_command_execute.side_effect = exception.SheepdogCmdException(
-                cmd = cmd, rc = rc, out = out, err = err)
+                cmd=cmd, rc=rc, out=out, err=err)
             ex = self.assertRaises(exception.SheepdogCmdException,
-                    self.driver.check_for_setup_error)
+                                   self.driver.check_for_setup_error)
             self.assertEqual(expect_msg, ex.msg)
 
     def test_copy_image_to_volume(self):
