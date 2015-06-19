@@ -22,6 +22,7 @@ import re
 
 from oslo_concurrency import processutils
 from oslo_config import cfg
+from oslo_config import types
 from oslo_log import log as logging
 from oslo_utils import units
 
@@ -34,14 +35,15 @@ from cinder.volume import driver
 
 LOG = logging.getLogger(__name__)
 
-DEFAULT_ADDR = '127.0.0.1'
-DEFAULT_PORT = 7000
-
 sheepdog_opts = [
-    cfg.StrOpt('sheepdog_store_address', default=DEFAULT_ADDR,
-               help=_('IP address of sheep daemon.')),
-    cfg.IntOpt('sheepdog_store_port', default=DEFAULT_PORT,
-               help=_('Port of sheep daemon.')),
+    cfg.Opt('sheepdog_store_address',
+            type=types.IPAddress(),
+            default='127.0.0.1',
+            help=_('IP address of sheep daemon.')),
+    cfg.Opt('sheepdog_store_port',
+            type=types.Integer(1, 65535),
+            default=7000,
+            help=_('Port of sheep daemon.'))
 ]
 
 CONF = cfg.CONF
@@ -56,8 +58,8 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def __init__(self, *args, **kwargs):
         super(SheepdogDriver, self).__init__(*args, **kwargs)
-        self.sheep_addr = self.configuration.sheepdog_store_address
-        self.sheep_port = self.configuration.sheepdog_store_port
+        self.sheep_addr = CONF.sheepdog_store_address
+        self.sheep_port = CONF.sheepdog_store_port
         self.stats_pattern = re.compile(r'[\w\s%]*Total\s(\d+)\s(\d+)*')
         self._stats = {}
 

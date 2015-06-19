@@ -114,13 +114,12 @@ class FakeImageService(object):
 class SheepdogTestCase(test.TestCase):
     def setUp(self):
         super(SheepdogTestCase, self).setUp()
-        self.driver = sheepdog.SheepdogDriver(
-            configuration=conf.Configuration(None))
-        self.sheep_addr = SHEEP_ADDR
-        self.sheep_port = SHEEP_PORT
-        db_driver = self.driver.configuration.db_driver
-        self.db = importutils.import_module(db_driver)
-        self.driver.db = self.db
+        self._cfg = conf.Configuration(None)
+        self._cfg.sheepdog_store_address = SHEEP_ADDR
+        self._cfg.sheepdog_store_port = SHEEP_PORT
+        self.driver = sheepdog.SheepdogDriver(configuration=self._cfg)
+        self.driver.db = importutils.import_module(
+            self.driver.configuration.db_driver)
         self.driver.do_setup(None)
         self.test_data = SheepdogDriverTestData()
 
@@ -149,7 +148,7 @@ class SheepdogTestCase(test.TestCase):
             self.assertEqual(expect_stderr, ex.kwargs['err'])
 
     def test_sheep_args(self):
-        args = ('--address', self.sheep_addr, '--port', str(self.sheep_port))
+        args = ('--address', SHEEP_ADDR, '--port', str(SHEEP_PORT))
         self.assertEqual(args, self.driver._sheep_args())
 
     def test_update_volume_stats(self):
