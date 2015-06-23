@@ -961,3 +961,15 @@ class DotHillNotTargetPortal(CinderException):
 
 class MetadataAbsent(CinderException):
     message = _("There is no metadata in DB object.")
+
+
+# Sheepdog
+class SheepdogError(VolumeBackendAPIException):
+    message = _("An error has occured in SheepdogDriver. (Reason: %(reason)s)")
+
+
+class SheepdogCmdError(SheepdogError):
+    message = _("(Command: %(cmd)s) "
+                "(Return Code: %(exit_code)s) "
+                "(Stdout: %(stdout)s) "
+                "(Stderr: %(stderr)s)")
