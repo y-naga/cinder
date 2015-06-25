@@ -96,19 +96,19 @@ class SheepdogClient(object):
     def _run_qemu_img(self, command, *params):
         """Executes qemu-img command wrapper"""
         cmd = ['qemu-img', command]
-        for part in params:
-            if part.startswith(self.QEMU_SHEEPDOG_PREFIX):
-                # replace 'sheepdog:foo' to 'sheepdog:[addr]:[port]:foo'
-                cmd.append(re.sub(
-                    '^%(prefix)s' % {'prefix': self.QEMU_SHEEPDOG_PREFIX},
-                    '%(prefix)s%(addr)s:%(port)s:' %
-                    {'prefix': self.QEMU_SHEEPDOG_PREFIX,
-                     'addr': self.addr, 'port': self.port},
-                    part))
-            else:
-                cmd.append(part)
+        for param in params:
+            if param.startswith(self.QEMU_SHEEPDOG_PREFIX):
+                # replace 'sheepdog:vdiname[:snapid]' to
+                #         'sheepdog:addr:port:vdiname[:snapid]'
+                param = param.replace(self.QEMU_SHEEPDOG_PREFIX,
+                                      '%(prefix)s%(addr)s:%(port)s:' %
+                                      {'prefix': self.QEMU_SHEEPDOG_PREFIX,
+                                       'addr': self.addr,
+                                       'port': self.port},
+                                      1)
+            cmd.append(param)
         try:
-            return self._execute(*tuple(cmd))
+            return self._execute(*cmd)
         except OSError as e:
             with excutils.save_and_reraise_exception():
                 if e.errno == errno.ENOENT:

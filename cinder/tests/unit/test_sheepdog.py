@@ -322,7 +322,7 @@ class SheepdogClientTestCase(test.TestCase):
                 cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
             ex = self.assertRaises(exception.SheepdogCmdError,
                                    self.client._run_qemu_img, *args)
-            self.assertEquals(expected_msg, ex.msg)
+            self.assertEqual(expected_msg, ex.msg)
 
     # test for check_cluster_status method
     def test_check_cluster_status(self):
