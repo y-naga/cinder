@@ -261,15 +261,6 @@ class SheepdogClientTestCase(test.TestCase):
                 self.assertRaises(OSError, self.client._run_dog, *args)
                 self.assertTrue(fake_logger.error.called)
 
-    def test_run_qemu_img_prefix_matched_once(self):
-        expected_cmd = ('qemu-img', 'create', '-b',
-                        'sheepdog:%(addr)s:%(port)s:vdi'
-                        % {'addr': SHEEP_ADDR, 'port': SHEEP_PORT}, '1G')
-        with mock.patch.object(self.client, '_execute') as fake_execute:
-                fake_execute.return_value = ('', '')
-                self.client._run_qemu_img('create', '-b', 'sheepdog:vdi', '1G')
-        fake_execute.assert_called_once_with(*expected_cmd)
-
     def test_run_qemu_img_prefix_matched_multiple(self):
         expected_cmd = ('qemu-img', 'create',
                         'sheepdog:%(addr)s:%(port)s:vdi' %
@@ -280,13 +271,6 @@ class SheepdogClientTestCase(test.TestCase):
                 fake_execute.return_value = ('', '')
                 self.client._run_qemu_img('create', 'sheepdog:vdi',
                                           'sheepdog:clone')
-        fake_execute.assert_called_once_with(*expected_cmd)
-
-    def test_run_qemu_img_prefix_matched_none(self):
-        expected_cmd = ('qemu-img', 'create', 'dummy')
-        with mock.patch.object(self.client, '_execute') as fake_execute:
-                fake_execute.return_value = ('', '')
-                self.client._run_qemu_img('create', 'dummy')
         fake_execute.assert_called_once_with(*expected_cmd)
 
     def test_run_qemu_img_prefix_matched_middle_in_str(self):
