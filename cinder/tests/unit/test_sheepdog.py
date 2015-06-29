@@ -492,24 +492,6 @@ class SheepdogClientTestCase(test.TestCase):
             self.client.resize(volname, 10)
             fake_execute.assert_called_once_with(*expected_cmd)
 
-    def test_resize_invalid_param_valueerror(self):
-        volname = self.test_data.TEST_VOLUME['name']
-        expected_msg = 'Invalid size parameter. [10G]'
-        with mock.patch.object(sheepdog, 'LOG') as fake_logger:
-            ex = self.assertRaises(exception.SheepdogError, self.client.resize,
-                                   volname, '10G')
-            self.assertTrue(fake_logger.error.called)
-            self.assertEqual(expected_msg, ex.kwargs['reason'])
-
-    def test_resize_invalid_param_typeerror(self):
-        volname = self.test_data.TEST_VOLUME['name']
-        expected_msg = 'Invalid size parameter. [None]'
-        with mock.patch.object(sheepdog, 'LOG') as fake_logger:
-            ex = self.assertRaises(exception.SheepdogError, self.client.resize,
-                                   volname, None)
-            self.assertTrue(fake_logger.error.called)
-            self.assertEqual(expected_msg, ex.kwargs['reason'])
-
     def test_resize_failed_to_connect(self):
         volname = self.test_data.TEST_VOLUME['name']
         cmd = self.test_data.cmd_dog_vdi_resize(volname, 10 * 1024 ** 3)

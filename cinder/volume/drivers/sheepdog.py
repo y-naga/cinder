@@ -231,13 +231,6 @@ class SheepdogIOWrapper(io.RawIOBase):
         raise IOError(_("fileno is not supported by SheepdogIOWrapper"))
 
     def resize(self, volume_name, size):
-        try:
-            int(size)
-        except (ValueError, TypeError) as e:
-            msg = _('Invalid size parameter. [%s]') % size
-            LOG.error(msg)
-            raise exception.SheepdogError(reason=msg)
-
         size = int(size) * units.Gi
         try:
             (stdout, stderr) = self._run_dog('vdi', 'resize', volume_name,
