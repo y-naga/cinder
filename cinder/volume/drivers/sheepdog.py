@@ -230,11 +230,10 @@ class SheepdogIOWrapper(io.RawIOBase):
         """
         raise IOError(_("fileno is not supported by SheepdogIOWrapper"))
 
-    def resize(self, volume_name, size):
+    def resize(self, vdiname, size):
         size = int(size) * units.Gi
         try:
-            (stdout, stderr) = self._run_dog('vdi', 'resize', volume_name,
-                                             size)
+            (stdout, stderr) = self._run_dog('vdi', 'resize', vdiname, size)
         except exception.SheepdogCmdError as e:
             stderr = e.kwargs['stderr']
             with excutils.save_and_reraise_exception():
@@ -243,22 +242,21 @@ class SheepdogIOWrapper(io.RawIOBase):
                               'addr: %(addr)s, port: %(port)s'),
                               {'addr': self.addr, 'port': self.port})
                 elif stderr.endswith(self.DOG_RESP_VDI_NOT_FOUND_BY_EXCEPTION):
-                    LOG.error(_LE('Failed to resize volume for volume not '
-                              'found. %s'),
-                              volume_name)
+                    LOG.error(_LE('Failed to resize vdi. vdi not found. %s'),
+                              vdiname)
                 elif stderr.startswith(self.DOG_RESP_VDI_SHRINK_NOT_SUPPORT):
-                    LOG.error(_LE('Failed to resize volume for shrink not '
-                              'support. volume:%(volname)s new size:%(size)s'),
-                              {'volname': volume_name, 'size': size})
+                    LOG.error(_LE('Failed to resize vdi. '
+                              'shrinking vdi not supported. '
+                              'vdi:%(vdiname)s new size:%(size)s'),
+                              {'vdiname': vdiname, 'size': size})
                 elif stderr.startswith(self.DOG_RESP_VDI_SIZE_TOO_LARGE):
-                    LOG.error(_LE('Failed to resize volume for volume size '
-                              'limit over. '
-                                  'volume:%(volname)s new size:%(size)s'),
-                              {'volname': volume_name, 'size': size})
+                    LOG.error(_LE('Failed to resize vdi. vdi size limit over. '
+                                  'vdi:%(vdiname)s new size:%(size)s'),
+                              {'vdiname': vdiname, 'size': size})
                 else:
-                    LOG.error(_LE('Failed to resize volume. '
-                              'volume:%(volname)s new size:%(size)s'),
-                              {'volname': volume_name, 'size': size})
+                    LOG.error(_LE('Failed to resize vdi. '
+                              'vdi:%(vdiname)s new size:%(size)s'),
+                              {'vdiname': vdiname, 'size': size})
 
 
 class SheepdogDriver(driver.VolumeDriver):
