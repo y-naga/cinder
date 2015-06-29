@@ -65,7 +65,10 @@ class SheepdogClient(object):
     DOG_RESP_CLUSTER_WAITING = ('Cluster status: '
                                 'Waiting for other nodes to join cluster')
     DOG_RESP_VDI_ALREADY_EXISTS = ': VDI exists already\\n'
-    DOG_RESP_VDI_NOT_FOUND = ': No VDI found\n'
+    DOG_RESP_VDI_NOT_FOUND_SUCCESS = ': No VDI found\n'
+    DOG_RESP_VDI_NOT_FOUND_BY_EXCEPTION = ': No VDI found\\n'
+    DOG_RESP_VDI_SHRINK_NOT_SUPPORT = 'Shrinking VDIs is not implemented'
+    DOG_RESP_VDI_SIZE_TOO_LARGE = 'New VDI size is too large'
 
     def __init__(self, addr, port):
         self.addr = addr
@@ -134,7 +137,7 @@ class SheepdogClient(object):
     def delete(self, vdiname):
         try:
             (stdout, stderr) = self._run_dog('vdi', 'delete', vdiname)
-            if stderr.endswith(self.DOG_RESP_VDI_NOT_FOUND):
+            if stderr.endswith(self.DOG_RESP_VDI_NOT_FOUND_SUCCESS):
                 LOG.warning(_LW('Volume not found. %s'), vdiname)
         except exception.SheepdogCmdError as e:
             stderr = e.kwargs['stderr']
@@ -227,6 +230,43 @@ class SheepdogIOWrapper(io.RawIOBase):
         """
         raise IOError(_("fileno is not supported by SheepdogIOWrapper"))
 
+    def resize(self, volume, size):
+        try:
+            int(size)
+        except (ValueError, TypeError) as e:
+            msg = _('Invalid size parameter. [%s]') % size
+            LOG.error(msg)
+            raise exception.SheepdogError(reason=msg)
+
+        size = int(size) * units.Gi
+        try:
+            (stdout, stderr) = self._run_dog('vdi', 'resize', volume['name'],
+                                             size)
+        except exception.SheepdogCmdError as e:
+            stderr = e.kwargs['stderr']
+            with excutils.save_and_reraise_exception():
+                if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
+                    LOG.error(_LE('Failed to connect sheep daemon. '
+                              'addr: %(addr)s, port: %(port)s'),
+                              {'addr': self.addr, 'port': self.port})
+                elif stderr.endswith(self.DOG_RESP_VDI_NOT_FOUND_BY_EXCEPTION):
+                    LOG.error(_LE('Failed to resize volume for volume not '
+                              'found. %s'),
+                              volume['name'])
+                elif stderr.startswith(self.DOG_RESP_VDI_SHRINK_NOT_SUPPORT):
+                    LOG.error(_LE('Failed to resize volume for shrink not '
+                              'support. volume:%(volname)s new size:%(size)s'),
+                              {'volname': volume['name'], 'size': size})
+                elif stderr.startswith(self.DOG_RESP_VDI_SIZE_TOO_LARGE):
+                    LOG.error(_LE('Failed to resize volume for volume size '
+                              'limit over. '
+                                  'volume:%(volname)s new size:%(size)s'),
+                              {'volname': volume['name'], 'size': size})
+                else:
+                    LOG.error(_LE('Failed to resize volume. '
+                              'volume:%(volname)s new size:%(size)s'),
+                              {'volname': volume['name'], 'size': size})
+
 
 class SheepdogDriver(driver.VolumeDriver):
     """Executes commands relating to Sheepdog Volumes."""
@@ -290,7 +330,7 @@ class SheepdogDriver(driver.VolumeDriver):
         (label, ip, port, name) = image_location.split(":", 3)
         volume_ref = {'name': name, 'size': image_meta['size']}
         self.create_cloned_volume(volume, volume_ref)
-        self._resize(volume)
+        self.client.resize(volume, volume['size'])
 
         vol_path = self.local_path(volume)
         return {'provider_location': vol_path}, True
@@ -334,13 +374,6 @@ class SheepdogDriver(driver.VolumeDriver):
         """Delete a logical volume."""
         self.client.delete(volume['name'])
 
-    def _resize(self, volume, size=None):
-        if not size:
-            size = int(volume['size']) * units.Gi
-
-        self._try_execute('dog', 'vdi', 'resize',
-                          volume['name'], size)
-
     def copy_image_to_volume(self, context, volume, image_service, image_id):
         with image_utils.temporary_file() as tmp:
             # (wenhao): we don't need to convert to raw for sheepdog.
@@ -353,7 +386,7 @@ class SheepdogDriver(driver.VolumeDriver):
             # convert and store into sheepdog
             image_utils.convert_image(tmp, 'sheepdog:%s' % volume['name'],
                                       'raw')
-            self._resize(volume)
+            self.client.resize(volume, volume['size'])
 
     def copy_volume_to_image(self, context, volume, image_service, image_meta):
         """Copy the volume to the specified image."""
@@ -444,19 +477,9 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def extend_volume(self, volume, new_size):
         """Extend an Existing Volume."""
-        old_size = volume['size']
-
-        try:
-            size = int(new_size) * units.Gi
-            self._resize(volume, size=size)
-        except Exception:
-            msg = _('Failed to Extend Volume '
-                    '%(volname)s') % {'volname': volume['name']}
-            LOG.error(msg)
-            raise exception.VolumeBackendAPIException(data=msg)
-
-        LOG.debug("Extend volume from %(old_size)s GB to %(new_size)s GB.",
-                  {'old_size': old_size, 'new_size': new_size})
+        self.client.resize(volume, new_size)
+        LOG.debug('Extend volume from %(old_size)s GB to %(new_size)s GB.',
+                  {'old_size': volume['size'], 'new_size': new_size})
 
     def backup_volume(self, context, backup, backup_service):
         """Create a new backup from an existing volume."""
