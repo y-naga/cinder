@@ -851,7 +851,7 @@ class SheepdogDriverTestCase(test.TestCase):
         patch = mock.patch.object
         with patch(self.driver, '_try_execute', return_value=True):
             with patch(self.driver, 'create_cloned_volume'):
-                with patch(self.driver, '_resize'):
+                with patch(self.client, 'resize'):
                     model_updated, cloned = self.driver.clone_image(
                         context, fake_vol, image_location,
                         image_meta, image_service)
