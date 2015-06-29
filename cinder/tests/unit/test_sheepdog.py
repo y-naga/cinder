@@ -498,7 +498,7 @@ class SheepdogClientTestCase(test.TestCase):
         with mock.patch.object(sheepdog, 'LOG') as fake_logger:
             ex = self.assertRaises(exception.SheepdogError, self.client.resize,
                                    volname, '10G')
-            fake_logger.error.assert_called_with(expected_msg)
+            self.assertTrue(fake_logger.error.called)
             self.assertEqual(expected_msg, ex.kwargs['reason'])
 
     def test_resize_invalid_param_typeerror(self):
@@ -507,7 +507,7 @@ class SheepdogClientTestCase(test.TestCase):
         with mock.patch.object(sheepdog, 'LOG') as fake_logger:
             ex = self.assertRaises(exception.SheepdogError, self.client.resize,
                                    volname, None)
-            fake_logger.error.assert_called_with(expected_msg)
+            self.assertTrue(fake_logger.error.called)
             self.assertEqual(expected_msg, ex.kwargs['reason'])
 
     def test_resize_failed_to_connect(self):
@@ -520,8 +520,6 @@ class SheepdogClientTestCase(test.TestCase):
                                                          exit_code=exit_code,
                                                          stdout=stdout,
                                                          stderr=stderr)
-        expected_log = _LE('Failed to connect sheep daemon. '
-                           'addr: %(addr)s, port: %(port)s')
         with mock.patch.object(self.client, '_run_dog') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = exception.SheepdogCmdError(
@@ -530,9 +528,7 @@ class SheepdogClientTestCase(test.TestCase):
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
                                        self.client.resize, volname, 10)
-                fake_logger.error.assert_called_with(expected_log,
-                                                     {'addr': SHEEP_ADDR,
-                                                      'port': SHEEP_PORT})
+                self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_not_found(self):
@@ -546,7 +542,6 @@ class SheepdogClientTestCase(test.TestCase):
                                                          exit_code=exit_code,
                                                          stdout=stdout,
                                                          stderr=stderr)
-        expected_log = _LE('Failed to resize volume for volume not found. %s')
         with mock.patch.object(self.client, '_run_dog') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = exception.SheepdogCmdError(
@@ -555,7 +550,7 @@ class SheepdogClientTestCase(test.TestCase):
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
                                        self.client.resize, volname, 1)
-                fake_logger.error.assert_called_with(expected_log, volname)
+                self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_size_shrink(self):
@@ -569,8 +564,6 @@ class SheepdogClientTestCase(test.TestCase):
                                                          exit_code=exit_code,
                                                          stdout=stdout,
                                                          stderr=stderr)
-        expected_log = _LE('Failed to resize volume for shrink not support. '
-                           'volume:%(volname)s new size:%(size)s')
         with mock.patch.object(self.client, '_run_dog') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = exception.SheepdogCmdError(
@@ -579,8 +572,7 @@ class SheepdogClientTestCase(test.TestCase):
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
                                        self.client.resize, volname, 1)
-                fake_logger.error.assert_called_with(expected_log, {
-                    'volname': volname, 'size': 1 * 1024 ** 3})
+                self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_size_too_large(self):
@@ -593,8 +585,6 @@ class SheepdogClientTestCase(test.TestCase):
                                                          exit_code=exit_code,
                                                          stdout=stdout,
                                                          stderr=stderr)
-        expected_log = _LE('Failed to resize volume for volume size limit '
-                           'over. volume:%(volname)s new size:%(size)s')
         with mock.patch.object(self.client, '_run_dog') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = exception.SheepdogCmdError(
@@ -603,8 +593,7 @@ class SheepdogClientTestCase(test.TestCase):
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
                                        self.client.resize, volname, 5000)
-                fake_logger.error.assert_called_with(expected_log, {
-                    'volname': volname, 'size': 5000 * 1024 ** 3})
+                self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_known(self):
@@ -617,8 +606,6 @@ class SheepdogClientTestCase(test.TestCase):
                                                          exit_code=exit_code,
                                                          stdout=stdout,
                                                          stderr=stderr)
-        expected_log = _LE('Failed to resize volume. '
-                           'volume:%(volname)s new size:%(size)s')
         with mock.patch.object(self.client, '_run_dog') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = exception.SheepdogCmdError(
@@ -627,8 +614,7 @@ class SheepdogClientTestCase(test.TestCase):
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
                                        self.client.resize, volname, 10)
-                fake_logger.error.assert_called_with(expected_log, {
-                    'volname': volname, 'size': 10 * 1024 ** 3})
+                self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
 
@@ -912,14 +898,11 @@ class SheepdogDriverTestCase(test.TestCase):
 
     def test_extend_volume(self):
         vol = self.test_data.TEST_VOLUME
-        expected_log = 'Extend volume from %(old_size)s GB to %(new_size)s GB.'
         with mock.patch.object(self.client, 'resize') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 self.driver.extend_volume(vol, 10)
                 fake_execute.assert_called_once_with(vol['name'], 10)
-                fake_logger.debug.assert_called_with(expected_log,
-                                                     {'old_size': vol['size'],
-                                                      'new_size': 10})
+                self.assertTrue(fake_logger.debug.called)
 
     def test_backup_volume(self):
         fake_context = {}
