@@ -485,16 +485,14 @@ class SheepdogClientTestCase(test.TestCase):
 
     # test for resize method
     def test_resize_success(self):
-        vdiname = self.test_data.TEST_VOLUME['name']
-        expected_cmd = ('vdi', 'resize', vdiname, 10 * 1024 ** 3)
+        expected_cmd = ('vdi', 'resize', self._vdiname, 10 * 1024 ** 3)
         with mock.patch.object(self.client, '_run_dog') as fake_execute:
             fake_execute.return_value = ('', '')
-            self.client.resize(vdiname, 10)
+            self.client.resize(self._vdiname, 10)
             fake_execute.assert_called_once_with(*expected_cmd)
 
     def test_resize_failed_to_connect(self):
-        vdiname = self.test_data.TEST_VOLUME['name']
-        cmd = self.test_data.cmd_dog_vdi_resize(vdiname, 10 * 1024 ** 3)
+        cmd = self.test_data.cmd_dog_vdi_resize(self._vdiname, 10 * 1024 ** 3)
         exit_code = 2
         stdout = 'stdout_dummy'
         stderr = self.test_data.DOG_COMMAND_ERROR_FAIL_TO_CONNECT
@@ -509,13 +507,12 @@ class SheepdogClientTestCase(test.TestCase):
                     stdout=stdout.replace('\n', '\\n'),
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
-                                       self.client.resize, vdiname, 10)
+                                       self.client.resize, self._vdiname, 10)
                 self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_not_found(self):
-        vdiname = self.test_data.TEST_VOLUME['name']
-        cmd = self.test_data.cmd_dog_vdi_resize(vdiname, 10 * 1024 ** 3)
+        cmd = self.test_data.cmd_dog_vdi_resize(self._vdiname, 10 * 1024 ** 3)
         exit_code = 1
         stdout = 'stdout_dummy'
         stderr = self.test_data.DOG_COMMAND_ERROR_VDI_NOT_EXISTS
@@ -530,14 +527,12 @@ class SheepdogClientTestCase(test.TestCase):
                     stdout=stdout.replace('\n', '\\n'),
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
-                                       self.client.resize, vdiname, 1)
+                                       self.client.resize, self._vdiname, 1)
                 self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_size_shrink(self):
-        self.test_data.TEST_VOLUME['size'] = 10
-        vdiname = self.test_data.TEST_VOLUME['name']
-        cmd = self.test_data.cmd_dog_vdi_resize(vdiname, 1 * 1024 ** 3)
+        cmd = self.test_data.cmd_dog_vdi_resize(self._vdiname, 1 * 1024 ** 3)
         exit_code = 1
         stdout = 'stdout_dummy'
         stderr = self.test_data.DOG_VDI_RESIZE_SIZE_SHRINK
@@ -552,13 +547,12 @@ class SheepdogClientTestCase(test.TestCase):
                     stdout=stdout.replace('\n', '\\n'),
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
-                                       self.client.resize, vdiname, 1)
+                                       self.client.resize, self._vdiname, 1)
                 self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_size_too_large(self):
-        vdiname = self.test_data.TEST_VOLUME['name']
-        cmd = self.test_data.cmd_dog_vdi_resize(vdiname, 5000 * 1024 ** 3)
+        cmd = self.test_data.cmd_dog_vdi_resize(self._vdiname, 5000 * 1024 ** 3)
         exit_code = 64
         stdout = 'stdout_dummy'
         stderr = self.test_data.DOG_VDI_RESIZE_TOO_LARGE
@@ -573,13 +567,12 @@ class SheepdogClientTestCase(test.TestCase):
                     stdout=stdout.replace('\n', '\\n'),
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
-                                       self.client.resize, vdiname, 5000)
+                                       self.client.resize, self._vdiname, 5000)
                 self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_known(self):
-        vdiname = self.test_data.TEST_VOLUME['name']
-        cmd = self.test_data.cmd_dog_vdi_resize(vdiname, 10 * 1024 ** 3)
+        cmd = self.test_data.cmd_dog_vdi_resize(self._vdiname, 10 * 1024 ** 3)
         exit_code = 2
         stdout = 'stdout_dummy'
         stderr = 'stderr_dummy'
@@ -594,7 +587,7 @@ class SheepdogClientTestCase(test.TestCase):
                     stdout=stdout.replace('\n', '\\n'),
                     stderr=stderr.replace('\n', '\\n'))
                 ex = self.assertRaises(exception.SheepdogCmdError,
-                                       self.client.resize, vdiname, 10)
+                                       self.client.resize, self._vdiname, 10)
                 self.assertTrue(fake_logger.error.called)
                 self.assertEqual(expected_msg, ex.msg)
 
@@ -878,11 +871,10 @@ class SheepdogDriverTestCase(test.TestCase):
             mock_exe.assert_called_once_with(*args)
 
     def test_extend_volume(self):
-        vol = self.test_data.TEST_VOLUME
         with mock.patch.object(self.client, 'resize') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
-                self.driver.extend_volume(vol, 10)
-                fake_execute.assert_called_once_with(vol['name'], 10)
+                self.driver.extend_volume(self.test_data.TEST_VOLUME, 10)
+                fake_execute.assert_called_once_with(self._vdiname, 10)
                 self.assertTrue(fake_logger.debug.called)
 
     def test_backup_volume(self):
