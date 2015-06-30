@@ -95,7 +95,7 @@ class SheepdogClient(object):
 
     def _run_qemu_img(self, command, *params):
         """Executes qemu-img command wrapper"""
-        cmd = ['qemu-img', command]
+        cmd = ['env', 'LC_ALL=C', 'LANG=C', 'qemu-img', command]
         for param in params:
             if param.startswith(self.QEMU_SHEEPDOG_PREFIX):
                 # replace 'sheepdog:vdiname[:snapid]' to
@@ -108,7 +108,7 @@ class SheepdogClient(object):
                                       1)
             cmd.append(param)
         try:
-            return self._execute(*cmd)
+            return utils.execute(*cmd)
         except OSError as e:
             with excutils.save_and_reraise_exception():
                 if e.errno == errno.ENOENT:

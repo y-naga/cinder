@@ -25,6 +25,7 @@ from oslo_utils import units
 import six
 
 from cinder import exception
+from cinder import utils
 from cinder.i18n import _, _LE
 from cinder.image import image_utils
 from cinder import test
@@ -261,27 +262,27 @@ class SheepdogClientTestCase(test.TestCase):
                 self.assertRaises(OSError, self.client._run_dog, *args)
                 self.assertTrue(fake_logger.error.called)
 
-    # test for _run_qemu_img method
     def test_run_qemu_img_prefix_matched_multiple(self):
-        expected_cmd = ('qemu-img', 'create', '-b',
+        expected_cmd = ('env', 'LC_ALL=C', 'LANG=C',
+                        'qemu-img', 'create', '-b',
                         'sheepdog:%(addr)s:%(port)s:vdi:1' %
                         {'addr': SHEEP_ADDR, 'port': SHEEP_PORT},
                         'sheepdog:%(addr)s:%(port)s:clone' %
                         {'addr': SHEEP_ADDR, 'port': SHEEP_PORT},
                         '10G')
-        with mock.patch.object(self.client, '_execute') as fake_execute:
+        with mock.patch.object(utils, 'execute') as fake_execute:
                 fake_execute.return_value = ('', '')
                 self.client._run_qemu_img('create', '-b', 'sheepdog:vdi:1',
                                           'sheepdog:clone', '10G')
         fake_execute.assert_called_once_with(*expected_cmd)
 
     def test_run_qemu_img_prefix_matched_middle_in_str(self):
-        expected_cmd = ('qemu-img', 'convert', '-f', 'raw',
-                        '-t', 'none', '-O', 'raw',
+        expected_cmd = ('env', 'LC_ALL=C', 'LANG=C', 'qemu-img', 'convert',
+                        '-f', 'raw', '-t', 'none', '-O', 'raw',
                         'sheepdog:%(addr)s:%(port)s:sheepdog:1'
                         % {'addr': SHEEP_ADDR, 'port': SHEEP_PORT},
                         '/tmp/tmp.raw')
-        with mock.patch.object(self.client, '_execute') as fake_execute:
+        with mock.patch.object(utils, 'execute') as fake_execute:
                 fake_execute.return_value = ('', '')
                 self.client._run_qemu_img(
                     'convert', '-f', 'raw', '-t', 'none', '-O', 'raw',
@@ -292,7 +293,7 @@ class SheepdogClientTestCase(test.TestCase):
         args = ('create', 'dummy')
         expected_msg = 'No such file or directory'
         expected_errno = errno.ENOENT
-        with mock.patch.object(self.client, '_execute') as fake_execute:
+        with mock.patch.object(utils, 'execute') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = OSError(expected_errno,
                                                    expected_msg)
@@ -303,7 +304,7 @@ class SheepdogClientTestCase(test.TestCase):
         args = ('create', 'dummy')
         expected_msg = 'unknown'
         expected_errno = errno.EPERM
-        with mock.patch.object(self.client, '_execute') as fake_execute:
+        with mock.patch.object(utils, 'execute') as fake_execute:
             with mock.patch.object(sheepdog, 'LOG') as fake_logger:
                 fake_execute.side_effect = OSError(expected_errno,
                                                    expected_msg)
@@ -318,7 +319,7 @@ class SheepdogClientTestCase(test.TestCase):
         stderr = 'stderr dummy\ndummy\ndummy\n'
         expected_msg = self.test_data.sheepdog_cmd_error(
             cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
-        with mock.patch.object(self.client, '_execute') as fake_execute:
+        with mock.patch.object(utils, 'execute') as fake_execute:
             fake_execute.side_effect = processutils.ProcessExecutionError(
                 cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
             ex = self.assertRaises(exception.SheepdogCmdError,
