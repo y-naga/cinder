@@ -149,6 +149,34 @@ class SheepdogClient(object):
                 else:
                     LOG.error(_LE('Failed to delete volume. %s'), vdiname)
 
+    def resize(self, vdiname, size):
+        size = int(size) * units.Gi
+        try:
+            (stdout, stderr) = self._run_dog('vdi', 'resize', vdiname, size)
+        except exception.SheepdogCmdError as e:
+            stderr = e.kwargs['stderr']
+            with excutils.save_and_reraise_exception():
+                if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
+                    LOG.error(_LE('Failed to connect sheep daemon. '
+                              'addr: %(addr)s, port: %(port)s'),
+                              {'addr': self.addr, 'port': self.port})
+                elif stderr.endswith(self.DOG_RESP_VDI_NOT_FOUND_BY_EXCEPTION):
+                    LOG.error(_LE('Failed to resize vdi. vdi not found. %s'),
+                              vdiname)
+                elif stderr.startswith(self.DOG_RESP_VDI_SHRINK_NOT_SUPPORT):
+                    LOG.error(_LE('Failed to resize vdi. '
+                              'shrinking vdi not supported. '
+                              'vdi:%(vdiname)s new size:%(size)s'),
+                              {'vdiname': vdiname, 'size': size})
+                elif stderr.startswith(self.DOG_RESP_VDI_SIZE_TOO_LARGE):
+                    LOG.error(_LE('Failed to resize vdi. vdi size limit over. '
+                                  'vdi:%(vdiname)s new size:%(size)s'),
+                              {'vdiname': vdiname, 'size': size})
+                else:
+                    LOG.error(_LE('Failed to resize vdi. '
+                              'vdi:%(vdiname)s new size:%(size)s'),
+                              {'vdiname': vdiname, 'size': size})
+
 
 class SheepdogIOWrapper(io.RawIOBase):
     """File-like object with Sheepdog backend."""
@@ -229,34 +257,6 @@ class SheepdogIOWrapper(io.RawIOBase):
         not supported - see http://docs.python.org/2/library/io.html#io.IOBase
         """
         raise IOError(_("fileno is not supported by SheepdogIOWrapper"))
-
-    def resize(self, vdiname, size):
-        size = int(size) * units.Gi
-        try:
-            (stdout, stderr) = self._run_dog('vdi', 'resize', vdiname, size)
-        except exception.SheepdogCmdError as e:
-            stderr = e.kwargs['stderr']
-            with excutils.save_and_reraise_exception():
-                if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
-                    LOG.error(_LE('Failed to connect sheep daemon. '
-                              'addr: %(addr)s, port: %(port)s'),
-                              {'addr': self.addr, 'port': self.port})
-                elif stderr.endswith(self.DOG_RESP_VDI_NOT_FOUND_BY_EXCEPTION):
-                    LOG.error(_LE('Failed to resize vdi. vdi not found. %s'),
-                              vdiname)
-                elif stderr.startswith(self.DOG_RESP_VDI_SHRINK_NOT_SUPPORT):
-                    LOG.error(_LE('Failed to resize vdi. '
-                              'shrinking vdi not supported. '
-                              'vdi:%(vdiname)s new size:%(size)s'),
-                              {'vdiname': vdiname, 'size': size})
-                elif stderr.startswith(self.DOG_RESP_VDI_SIZE_TOO_LARGE):
-                    LOG.error(_LE('Failed to resize vdi. vdi size limit over. '
-                                  'vdi:%(vdiname)s new size:%(size)s'),
-                              {'vdiname': vdiname, 'size': size})
-                else:
-                    LOG.error(_LE('Failed to resize vdi. '
-                              'vdi:%(vdiname)s new size:%(size)s'),
-                              {'vdiname': vdiname, 'size': size})
 
 
 class SheepdogDriver(driver.VolumeDriver):
