@@ -552,7 +552,8 @@ class SheepdogClientTestCase(test.TestCase):
                 self.assertEqual(expected_msg, ex.msg)
 
     def test_resize_failed_size_too_large(self):
-        cmd = self.test_data.cmd_dog_vdi_resize(self._vdiname, 5000 * 1024 ** 3)
+        cmd = self.test_data.cmd_dog_vdi_resize(
+            self._vdiname, 5000 * 1024 ** 3)
         exit_code = 64
         stdout = 'stdout_dummy'
         stderr = self.test_data.DOG_VDI_RESIZE_TOO_LARGE

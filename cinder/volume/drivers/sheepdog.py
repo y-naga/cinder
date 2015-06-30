@@ -157,7 +157,7 @@ class SheepdogClient(object):
             with excutils.save_and_reraise_exception():
                 if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
                     LOG.error(_LE('Failed to connect sheep daemon. '
-                              'addr: %(addr)s, port: %(port)s'),
+                                  'addr: %(addr)s, port: %(port)s'),
                               {'addr': self.addr, 'port': self.port})
                 elif stderr.rstrip('\\n').endswith(
                         self.DOG_RESP_VDI_NOT_FOUND):
@@ -165,8 +165,8 @@ class SheepdogClient(object):
                               vdiname)
                 elif stderr.startswith(self.DOG_RESP_VDI_SHRINK_NOT_SUPPORT):
                     LOG.error(_LE('Failed to resize vdi. '
-                              'shrinking vdi not supported. '
-                              'vdi:%(vdiname)s new size:%(size)s'),
+                                  'shrinking vdi not supported. '
+                                  'vdi:%(vdiname)s new size:%(size)s'),
                               {'vdiname': vdiname, 'size': size})
                 elif stderr.startswith(self.DOG_RESP_VDI_SIZE_TOO_LARGE):
                     LOG.error(_LE('Failed to resize vdi. vdi size limit over. '
@@ -174,7 +174,7 @@ class SheepdogClient(object):
                               {'vdiname': vdiname, 'size': size})
                 else:
                     LOG.error(_LE('Failed to resize vdi. '
-                              'vdi:%(vdiname)s new size:%(size)s'),
+                                  'vdi:%(vdiname)s new size:%(size)s'),
                               {'vdiname': vdiname, 'size': size})
 
 
