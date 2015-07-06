@@ -22,7 +22,9 @@ from oslo_concurrency import processutils
 from oslo_utils import importutils
 from oslo_utils import units
 
+from cinder.backup import driver as backup_driver
 from cinder import context
+from cinder import db
 from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
@@ -1698,20 +1700,22 @@ class SheepdogDriverTestCase(test.TestCase):
         fake_execute.assert_called_once_with(self._vdiname, 10)
         self.assertTrue(fake_logger.debug.called)
 
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
+    @mock.patch.object(db, 'volume_get')
     @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
-    @mock.patch.object(sheepdog.SheepdogDriver, '_try_execute')
-    def test_backup_volume(self, fake_try_execute, fake_create_snapshot,
-                           fake_delete_snapshot):
+    @mock.patch.object(backup_driver, 'BackupDriver')
+    @mock.patch.object(sheepdog, 'LOG')
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
+    def test_backup_volume(self, fake_delete_snapshot, fake_logger,
+                           fake_backup_service, fake_create_snapshot,
+                           fake_volume_get):
+        # Test1: backup volume successfully
         fake_context = {}
-        fake_backup = self.test_data.TEST_BACKUP_VOLUME
+        fake_backup_vol = self.test_data.TEST_BACKUP_VOLUME
         fake_backup_service = mock.Mock()
-
-        fake_db = mock.MagicMock()
-        self.stubs.Set(self.driver, 'db', fake_db)
+        fake_volume_get.return_value = self.test_data.TEST_VOLUME
 
         self.driver.backup_volume(fake_context,
-                                  fake_backup,
+                                  fake_backup_vol,
                                   fake_backup_service)
 
         # check that temporary snapshot was created and deleted.
@@ -1723,50 +1727,63 @@ class SheepdogDriverTestCase(test.TestCase):
         # check that backup_service was called.
         call_args, call_kwargs = fake_backup_service.backup.call_args
         call_backup, call_sheepdog_fd = call_args
-        self.assertEqual(fake_backup, call_backup)
+        self.assertEqual(fake_backup_vol, call_backup)
         self.assertIsInstance(call_sheepdog_fd, sheepdog.SheepdogIOWrapper)
 
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
-    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
-    @mock.patch.object(sheepdog.SheepdogDriver, '_try_execute')
-    def test_backup_volume_failure(self, fake_try_execute,
-                                   fake_create_snapshot, fake_delete_snapshot):
-        fake_context = {}
-        fake_backup = self.test_data.TEST_BACKUP_VOLUME
-        fake_backup_service = mock.Mock()
+        # Test2: failed to create snapshot
+        fake_create_snapshot.reset_mock()
+        fake_delete_snapshot.reset_mock()
 
-        fake_db = mock.MagicMock()
-        self.stubs.Set(self.driver, 'db', fake_db)
+        fake_volume_get.return_value = self.test_data.TEST_VOLUME
+        # check to raise without removing in case of fail to snapshot create.
+        fake_create_snapshot.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout='dummy', stderr='dummy')
+
+        self.assertRaises(exception.SheepdogCmdError,
+                          self.driver.backup_volume,
+                          fake_context,
+                          fake_backup_vol,
+                          fake_backup_service)
+
+        self.assertEqual(1, fake_create_snapshot.call_count)
+        self.assertEqual(0, fake_delete_snapshot.call_count)
+        self.assertTrue(fake_logger.error.called)
+
+        # Test3: failed to volume backup
+        fake_create_snapshot.reset_mock()
+        fake_create_snapshot.side_effect = None
+        fake_delete_snapshot.reset_mock()
+        fake_logger.reset_mock()
 
         # check that the snapshot gets deleted in case of a backup error.
         class BackupError(Exception):
             pass
-        backup_failure = mock.Mock(side_effect=BackupError)
-        self.stubs.Set(fake_backup_service, 'backup', backup_failure)
+        fake_backup_service.backup.side_effect = BackupError()
 
         self.assertRaises(BackupError,
                           self.driver.backup_volume,
                           fake_context,
-                          fake_backup,
+                          fake_backup_vol,
                           fake_backup_service)
 
         self.assertEqual(1, fake_create_snapshot.call_count)
         self.assertEqual(1, fake_delete_snapshot.call_count)
         self.assertEqual(fake_create_snapshot.call_args,
                          fake_delete_snapshot.call_args)
+        self.assertTrue(fake_logger.error.called)
 
     def test_restore_backup(self):
         fake_context = {}
-        fake_backup = {}
+        fake_backup_vol = {}
         fake_volume = {'id': '2926efe0-24ab-45b7-95e1-ff66e0646a33',
                        'name': 'volume-2926efe0-24ab-45b7-95e1-ff66e0646a33'}
         fake_backup_service = mock.Mock()
 
         self.driver.restore_backup(
-            fake_context, fake_backup, fake_volume, fake_backup_service)
+            fake_context, fake_backup_vol, fake_volume, fake_backup_service)
 
         call_args, call_kwargs = fake_backup_service.restore.call_args
         call_backup, call_volume_id, call_sheepdog_fd = call_args
-        self.assertEqual(fake_backup, call_backup)
+        self.assertEqual(fake_backup_vol, call_backup)
         self.assertEqual(fake_volume['id'], call_volume_id)
         self.assertIsInstance(call_sheepdog_fd, sheepdog.SheepdogIOWrapper)
