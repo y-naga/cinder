@@ -704,16 +704,18 @@ class SheepdogDriver(driver.VolumeDriver):
 
         try:
             self.client.create_snapshot(src_volume.name, temp_snapshot_name)
-        except (processutils.ProcessExecutionError, OSError) as exc:
-            msg = (_('Failed to create a temporary snapshot for '
-                     'volume %(volume_id)s, error message was: %(err_msg)s')
-                   % {'volume_id': src_volume.id, 'err_msg': exc.message})
-            LOG.exception(msg)
-            raise exception.VolumeBackendAPIException(data=msg)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to create a temporary snapshot for '
+                              'volume "%s".'), src_volume.name)
 
         try:
             sheepdog_fd = SheepdogIOWrapper(src_volume, temp_snapshot_name)
             backup_service.backup(backup, sheepdog_fd)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to backup volume "%s".'),
+                          src_volume.name)
         finally:
             self.client.delete_snapshot(src_volume.name, temp_snapshot_name)
 
