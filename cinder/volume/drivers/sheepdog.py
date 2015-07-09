@@ -74,6 +74,7 @@ class SheepdogClient(object):
     DOG_RESP_SNAPSHOT_VDI_NOT_FOUND = ': No VDI found'
     DOG_RESP_SNAPSHOT_NOT_FOUND = ': Failed to find requested tag'
     DOG_RESP_SNAPSHOT_EXISTED = 'tag (%(snapname)s) is existed'
+    DOG_RESP_IO_OFFSET_BEYOND_END = 'offset is beyond the end of the VDI'
     QEMU_SHEEPDOG_PREFIX = 'sheepdog:'
     QEMU_IMG_RESP_CONNECTION_ERROR = ('Failed to connect socket: '
                                       'Connection refused')
@@ -399,6 +400,69 @@ class SheepdogClient(object):
                                   ' destination format %(dst_format)s'),
                               {'src_path': src_path, 'dst_path': dst_path,
                                'src_fmt': src_fmt, 'sdt_fmt': dst_fmt})
+
+    def read(self, vdiname, snapname=None, offset=None, length=None):
+        params = []
+        if snapname:
+            params.extend(('-s', snapname))
+        params.append(vdiname)
+        if not offset:
+            offset = 0
+        params.append(offset)
+        if length:
+            params.append(length)
+        try:
+            return self._run_dog('vdi', 'read', async=True, *params)
+        except exception.SheepdogCmdError as e:
+            cmd = e.kwargs['cmd']
+            stderr = e.kwargs['stderr']
+            with excutils.save_and_reraise_exception():
+                if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
+                    LOG.error(_LE('Failed to connect sheep daemon. '
+                                  'addr: %(addr)s, port: %(port)s'),
+                              {'addr': self.addr, 'port': self.port})
+                elif stderr.rstrip('\\n').endswith(
+                        self.DOG_RESP_VDI_NOT_FOUND):
+                    LOG.error(_LE('Failed to read vdi. vdi not found. %s'),
+                              vdiname)
+                elif stderr.rstrip('\\n').endswith(
+                        self.DOG_RESP_SNAPSHOT_NOT_FOUND):
+                    LOG.error(_LW('Failed to read vdi. '
+                                  'snapshot not found. %s'), snapname)
+                elif stderr.rstrip('\\n').endswith(
+                        self.DOG_RESP_IO_OFFSET_BEYOND_END):
+                    LOG.error(_LE('Failed to read vdi. read offset invalid.'
+                                  'offset: %d'), offset)
+                else:
+                    LOG.error(_LE('Failed to read vdi. (command: %s)'), cmd)
+
+    def write(self, vdiname, data, offset=None, length=None):
+        params = [vdiname]
+        if not offset:
+            offset = 0
+        params.append(offset)
+        if length:
+            params.append(length)
+        try:
+            self._run_dog('vdi', 'write', data=data, async=True, *params)
+        except exception.SheepdogCmdError as e:
+            cmd = e.kwargs['cmd']
+            stderr = e.kwargs['stderr']
+            with excutils.save_and_reraise_exception():
+                if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
+                    LOG.error(_LE('Failed to connect sheep daemon. '
+                                  'addr: %(addr)s, port: %(port)s'),
+                              {'addr': self.addr, 'port': self.port})
+                elif stderr.rstrip('\\n').endswith(
+                        self.DOG_RESP_VDI_NOT_FOUND):
+                    LOG.error(_LE('Failed to write vdi. vdi not found. %s'),
+                              vdiname)
+                elif stderr.rstrip('\\n').endswith(
+                        self.DOG_RESP_IO_OFFSET_BEYOND_END):
+                    LOG.error(_LE('Failed to write vdi. write offset invalid.'
+                                  'offset: %d'), offset)
+                else:
+                    LOG.error(_LE('Failed to write vdi. (command: %s)'), cmd)
 
     def _is_cloneable(self, image_location, image_meta):
         """Check the image can be clone or not."""
