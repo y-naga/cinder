@@ -90,11 +90,33 @@ class SheepdogClient(object):
         self.addr = addr
         self.port = port
 
-    def _run_dog(self, command, subcommand, *params):
+    def _run_dog(self, command, subcommand, *params, **kwargs):
+        """Helper method to run dog command
+        :param async:       execute under eventlet.
+        :type async:        boolean
+        :param data:        Send to opened process.
+        :type data:         string
+        """
+
+        async = kwargs.pop('async', False)
+        data = kwargs.pop('data', None)
         cmd = ('env', 'LC_ALL=C', 'LANG=C', 'dog', command, subcommand,
                '-a', self.addr, '-p', str(self.port)) + params
         try:
-            return utils.execute(*cmd)
+            if async:
+                # XXX(yamada-h):
+                # processutils.execute causes busy waiting under eventlet.
+                # To avoid wasting CPU resources, it should not be used for
+                # the command which takes long time to execute.
+                # For workaround, we replace a subprocess module with
+                # the original one while only executing a read/write command.
+                import eventlet
+                _processutils_subprocess = processutils.subprocess
+                processutils.subprocess = \
+                    eventlet.patcher.original('subprocess')
+                return utils.execute(*cmd, process_input=data)
+            else:
+                return utils.execute(*cmd)
         except OSError as e:
             with excutils.save_and_reraise_exception():
                 if e.errno == errno.ENOENT:
@@ -109,6 +131,9 @@ class SheepdogClient(object):
                 exit_code=e.exit_code,
                 stdout=e.stdout.replace('\n', '\\n'),
                 stderr=e.stderr.replace('\n', '\\n'))
+        finally:
+            if async and _processutils_subprocess:
+                processutils.subprocess = _processutils_subprocess
 
     def _run_qemu_img(self, command, *params):
         """Executes qemu-img command wrapper"""

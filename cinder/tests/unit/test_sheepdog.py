@@ -411,22 +411,57 @@ class SheepdogClientTestCase(test.TestCase):
     @mock.patch.object(utils, 'execute')
     @mock.patch.object(sheepdog, 'LOG')
     def test_run_dog(self, fake_logger, fake_execute):
-        args = ('cluster', 'info')
 
         # Test1: success
         expected_cmd = self.test_data.CMD_DOG_CLUSTER_INFO
-        fake_execute.return_value = ('', '')
-        self.client._run_dog(*args)
+        self.client._run_dog('cluster', 'info')
         fake_execute.assert_called_once_with(*expected_cmd)
 
-        # Test2: os_error because dog command is not found
+        # Test2: success in async
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        data = "data1"
+        expected_cmd = ('env', 'LC_ALL=C', 'LANG=C', 'dog', 'vdi', 'write',
+                        '-a', SHEEP_ADDR, '-p', '%d' % SHEEP_PORT,
+                        self._vdiname)
+        self.client._run_dog('vdi', 'write', self._vdiname, async=True,
+                             data=data)
+        fake_execute.assert_called_once_with(*expected_cmd, process_input=data)
+
+        # Test3: os_error because dog command is not found
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         expected_msg = 'No such file or directory'
         expected_errno = errno.ENOENT
         fake_execute.side_effect = OSError(expected_errno, expected_msg)
-        self.assertRaises(OSError, self.client._run_dog, *args)
+        self.assertRaises(OSError, self.client._run_dog, 'cluster', 'info')
         self.assertTrue(fake_logger.error.called)
+
+        # Test4: unknown os_error
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        fake_execute.side_effect = None
+        expected_msg = 'Operation not permitted'
+        expected_errno = errno.EPERM
+        fake_execute.side_effect = OSError(expected_errno, expected_msg)
+        self.assertRaises(OSError, self.client._run_dog, 'cluster', 'info')
+        self.assertTrue(fake_logger.error.called)
+
+        # Test5: processutils execution error
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        fake_execute.side_effect = None
+        cmd = self.test_data.CMD_DOG_CLUSTER_INFO
+        exit_code = 1
+        stdout = 'stdout dummy'
+        stderr = 'stderr dummy'
+        expected_msg = self.test_data.sheepdog_cmd_error(
+            cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
+        fake_execute.side_effect = processutils.ProcessExecutionError(
+            cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
+        ex = self.assertRaises(exception.SheepdogCmdError,
+                               self.client._run_dog, 'cluster', 'info')
+        self.assertEqual(expected_msg, ex.msg)
 
     @mock.patch.object(utils, 'execute')
     @mock.patch.object(sheepdog, 'LOG')
