@@ -526,6 +526,8 @@ class SheepdogIOWrapper(io.RawIOBase):
     """File-like object with Sheepdog backend."""
 
     def __init__(self, volume, snapshot_name=None):
+        self.client = SheepdogClient(CONF.sheepdog_store_address,
+                                     CONF.sheepdog_store_port)
         self._vdiname = volume['name']
         self._snapshot_name = snapshot_name
         self._offset = 0
@@ -533,39 +535,16 @@ class SheepdogIOWrapper(io.RawIOBase):
     def _inc_offset(self, length):
         self._offset += length
 
-    def _execute(self, cmd, data=None):
-        try:
-            # XXX(yamada-h):
-            # processutils.execute causes busy waiting under eventlet.
-            # To avoid wasting CPU resources, it should not be used for
-            # the command which takes long time to execute.
-            # For workaround, we replace a subprocess module with
-            # the original one while only executing a read/write command.
-            import eventlet
-            _processutils_subprocess = processutils.subprocess
-            processutils.subprocess = eventlet.patcher.original('subprocess')
-            return processutils.execute(*cmd, process_input=data)[0]
-        except (processutils.ProcessExecutionError, OSError):
-            msg = _('Sheepdog I/O Error, command was: "%s"') % ' '.join(cmd)
-            raise exception.VolumeDriverException(msg)
-        finally:
-            processutils.subprocess = _processutils_subprocess
-
     def read(self, length=None):
-        cmd = ['dog', 'vdi', 'read']
-        if self._snapshot_name:
-            cmd.extend(('-s', self._snapshot_name))
-        cmd.extend((self._vdiname, self._offset))
-        if length:
-            cmd.append(length)
-        data = self._execute(cmd)
+        data = self.client.read(self._vdiname, snapname=self._snapshot_name,
+                                offset=self._offset, length=length)
         self._inc_offset(len(data))
         return data
 
     def write(self, data):
         length = len(data)
-        cmd = ('dog', 'vdi', 'write', self._vdiname, self._offset, length)
-        self._execute(cmd, data)
+        self.client.write(self._vdiname, data, offset=self._offset,
+                          length=length)
         self._inc_offset(length)
         return length
 

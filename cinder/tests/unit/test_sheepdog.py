@@ -326,9 +326,6 @@ class SheepdogIOWrapperTestCase(test.TestCase):
         self.snapshot_wrapper = sheepdog.SheepdogIOWrapper(
             self.volume, self.snapshot_name)
 
-        self.execute = mock.MagicMock()
-        self.stubs.Set(processutils, 'execute', self.execute)
-
     def test_init(self):
         self.assertEqual(self.volume['name'], self.vdi_wrapper._vdiname)
         self.assertIsNone(self.vdi_wrapper._snapshot_name)
@@ -342,47 +339,33 @@ class SheepdogIOWrapperTestCase(test.TestCase):
         self.vdi_wrapper._inc_offset(10)
         self.assertEqual(20, self.vdi_wrapper.tell())
 
-    def test_execute(self):
-        cmd = ('cmd1', 'arg1')
-        data = 'data1'
-
-        self.vdi_wrapper._execute(cmd, data)
-
-        self.execute.assert_called_once_with(*cmd, process_input=data)
-
-    def test_execute_error(self):
-        cmd = ('cmd1', 'arg1')
-        data = 'data1'
-        self.stubs.Set(processutils, 'execute',
-                       mock.MagicMock(side_effect=OSError))
-
-        args = (cmd, data)
-        self.assertRaises(exception.VolumeDriverException,
-                          self.vdi_wrapper._execute,
-                          *args)
-
-    def test_read_vdi(self):
+    @mock.patch.object(sheepdog.SheepdogClient, 'read')
+    def test_read_vdi(self, fake_read):
+        # Test1: read vdi
+        data = "data1"
+        fake_read.return_value = data
         self.vdi_wrapper.read()
-        self.execute.assert_called_once_with(
-            'dog', 'vdi', 'read', self.volume['name'], 0, process_input=None)
-
-    def test_write_vdi(self):
-        data = 'data1'
-
-        self.vdi_wrapper.write(data)
-
-        self.execute.assert_called_once_with(
-            'dog', 'vdi', 'write',
-            self.volume['name'], 0, len(data),
-            process_input=data)
+        fake_read.assert_called_once_with(self.volume['name'],
+                                          snapname=None,
+                                          offset=0, length=None)
         self.assertEqual(len(data), self.vdi_wrapper.tell())
 
-    def test_read_snapshot(self):
+        # Test2: read snapshot
+        fake_read.reset_mock()
+        fake_read.return_value = data
         self.snapshot_wrapper.read()
-        self.execute.assert_called_once_with(
-            'dog', 'vdi', 'read', '-s', self.snapshot_name,
-            self.volume['name'], 0,
-            process_input=None)
+        fake_read.assert_called_once_with(self.volume['name'],
+                                          snapname=self.snapshot_name,
+                                          offset=0, length=None)
+        self.assertEqual(len(data), self.snapshot_wrapper.tell())
+
+    @mock.patch.object(sheepdog.SheepdogClient, 'write')
+    def test_write_vdi(self, fake_write):
+        data = 'data1'
+        self.vdi_wrapper.write(data)
+        fake_write.assert_called_once_with(self.volume['name'], data, offset=0,
+                                           length=len(data))
+        self.assertEqual(len(data), self.vdi_wrapper.tell())
 
     def test_seek(self):
         self.vdi_wrapper.seek(12345)
@@ -394,10 +377,11 @@ class SheepdogIOWrapperTestCase(test.TestCase):
         # This results in negative offset.
         self.assertRaises(IOError, self.vdi_wrapper.seek, -20000, whence=1)
 
-    def test_flush(self):
+    @mock.patch.object(utils, 'execute')
+    def test_flush(self, fake_execute):
         # flush does noting.
         self.vdi_wrapper.flush()
-        self.assertFalse(self.execute.called)
+        self.assertFalse(fake_execute.called)
 
     def test_fileno(self):
         self.assertRaises(IOError, self.vdi_wrapper.fileno)
