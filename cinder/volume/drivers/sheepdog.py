@@ -546,19 +546,13 @@ class SheepdogDriver(driver.VolumeDriver):
             'name': source_name,
             'size': image_meta['size']
         }
-        target_vol = {
-            'name': volume['name'],
-            'volume_name': source_vol['name'],
-            'volume_size': image_meta['size'],
-        }
 
         try:
             if _snapshot:
-                self.client.clone(target_vol['name'],
-                                  target_vol['volume_name'],
-                                  volume.name, volume.size)
+                self.client.clone(source_name, DEFAULT_SNAPNAME,
+                                  volume['name'], volume.size)
             else:
-                self.create_cloned_volume(source_vol['name'],
+                self.create_cloned_volume(volume,
                                           source_vol)
         except exception.SheepdogCmdError:
             with excutils.save_and_reraise_exception():
