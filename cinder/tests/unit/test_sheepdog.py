@@ -286,14 +286,13 @@ qemu-img: Could not open '/tmp/volume-00000001': \
 Unknown driver 'dummy'
 """
 
-    IS_CLONEABLE_TRUE = """\
+    IS_CLONEABLE_SNAPSHOT = """\
 s a720b3c0-d1f0-11e1-9b23-0800200c9a66 1 1 1 1 1 1 1 glance-image 22
 """
 
-    IS_CLONEABLE_FALSE = """\
-  a720b3c0-d1f0-11e1-9b23-0800200c9a66 1 1 1 1 1 1 1 dummy-image 22
+    IS_CLONEABLE_VOLUME = """\
+  a720b3c0-d1f0-11e1-9b23-0800200c9a66 1 1 1 1 1 1 1 22
 """
-
 
 class FakeImageService(object):
     def download(self, context, image_id, path):
@@ -1265,12 +1264,13 @@ class SheepdogClientTestCase(test.TestCase):
         image_location = 'sheepdog://%s' % image_meta['id']
 
         # Test1: the image_location is cloneable
-        stdout = self.test_data.IS_CLONEABLE_TRUE
+        stdout = self.test_data.IS_CLONEABLE_SNAPSHOT
         stderr = ''
         fake_execute.return_value = (stdout, stderr)
         fake_parse_loc.return_value = image_meta['id']
-        self.assertTrue(
-            self.client._is_cloneable(image_location, image_meta))
+        self.assertTrue((True, True),
+                        self.client._is_cloneable(image_location,
+                                                  image_meta))
         fake_execute.assert_called_once_with(*expected_cmd)
         self.assertEqual(1, fake_execute.call_count)
 
@@ -1278,10 +1278,14 @@ class SheepdogClientTestCase(test.TestCase):
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         fake_parse_loc.reset_mock()
+        stdout = ''
+        stderr = ''
+        fake_execute.return_value = (stdout, stderr)
         invalid_image_meta = {'id': image_meta['id'],
                               'size': image_meta['size'], 'disk_format': 'iso'}
-        self.assertFalse(
-            self.client._is_cloneable(image_location, invalid_image_meta))
+        self.assertEqual((False, False),
+                         self.client._is_cloneable(image_location,
+                                                   invalid_image_meta))
         self.assertEqual(0, fake_execute.call_count)
         self.assertTrue(fake_logger.debug.called)
 
@@ -1289,11 +1293,15 @@ class SheepdogClientTestCase(test.TestCase):
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         fake_parse_loc.reset_mock()
+        stdout = ''
+        stderr = ''
+        fake_execute.return_value = (stdout, stderr)
         error = exception.ImageUnacceptable(image_id='invalid_image',
                                             reason=_('invalid'))
         fake_parse_loc.side_effect = error
-        self.assertFalse(
-            self.client._is_cloneable(image_location, image_meta))
+        self.assertEqual((False, False),
+                         self.client._is_cloneable(image_location,
+                                                   image_meta))
         self.assertEqual(0, fake_execute.call_count)
         self.assertTrue(fake_logger.debug.called)
 
@@ -1306,8 +1314,9 @@ class SheepdogClientTestCase(test.TestCase):
         stderr = ''
         fake_parse_loc.return_value = image_meta['id']
         fake_execute.return_value = (stdout, stderr)
-        self.assertFalse(
-            self.client._is_cloneable(image_location, image_meta))
+        self.assertEqual((False, False),
+                         self.client._is_cloneable(image_location,
+                                                   image_meta))
         self.assertEqual(1, fake_execute.call_count)
         fake_execute.assert_called_once_with(*expected_cmd)
         self.assertTrue(fake_logger.debug.called)
@@ -1316,12 +1325,13 @@ class SheepdogClientTestCase(test.TestCase):
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         fake_parse_loc.reset_mock()
-        stdout = self.test_data.IS_CLONEABLE_FALSE
+        stdout = self.test_data.IS_CLONEABLE_VOLUME
         stderr = ''
         fake_execute.return_value = (stdout, stderr)
         fake_parse_loc.return_value = image_meta['id']
-        self.assertFalse(
-            self.client._is_cloneable(image_location, image_meta))
+        self.assertEqual((True, False),
+                         self.client._is_cloneable(image_location,
+                                                   image_meta))
         fake_execute.assert_called_once_with(*expected_cmd)
         self.assertTrue(fake_logger.debug.called)
 
@@ -1548,14 +1558,12 @@ class SheepdogDriverTestCase(test.TestCase):
                                                      snapshot.name)
 
     @mock.patch.object(sheepdog.SheepdogClient, '_run_dog')
-    @mock.patch.object(sheepdog.SheepdogClient, 'resize')
-    @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    def test_clone_image_success(self, fake_create_cloned_volume, fake_resize,
-                                 fake_execute):
+    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
+    def test_clone_image_from_glance(self, fake_clone, fake_execute):
         context = {}
         fake_vol = self.test_data.TEST_VOLUME
         fake_name = self.test_data.TEST_VOLUME['name']
-        stdout = self.test_data.IS_CLONEABLE_TRUE
+        stdout = self.test_data.IS_CLONEABLE_SNAPSHOT
         stderr = ''
 
         fake_location = 'sheepdog://%s' % self.test_data.TEST_VOLUME['id']
@@ -1569,6 +1577,33 @@ class SheepdogDriverTestCase(test.TestCase):
         model_updated, cloned = self.driver.clone_image(
             context, fake_vol, image_location, image_meta, image_service)
 
+        self.assertEqual(1, fake_clone.call_count)
+        self.assertTrue(cloned)
+        self.assertEqual("sheepdog://%s" % fake_name,
+                         model_updated['provider_location'])
+
+    @mock.patch.object(sheepdog.SheepdogClient, '_run_dog')
+    @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
+    def test_clone_image_from_volume(self, fake_create_cloned_volume,
+                                     fake_execute):
+        context = {}
+        fake_vol = self.test_data.TEST_VOLUME
+        fake_name = self.test_data.TEST_VOLUME['name']
+        stdout = self.test_data.IS_CLONEABLE_VOLUME
+        stderr = ''
+
+        fake_location = 'sheepdog://%s' % self.test_data.TEST_VOLUME['id']
+        image_location = (fake_location, None)
+        image_meta = {'id': self.test_data.TEST_VOLUME['id'],
+                      'size': self.test_data.TEST_VOLUME['size'],
+                      'disk_format': 'raw'}
+        image_service = ''
+
+        fake_execute.return_value = (stdout, stderr)
+        model_updated, cloned = self.driver.clone_image(
+            context, fake_vol, image_location, image_meta, image_service)
+
+        self.assertEqual(1, fake_create_cloned_volume.call_count)
         self.assertTrue(cloned)
         self.assertEqual("sheepdog://%s" % fake_name,
                          model_updated['provider_location'])
@@ -1581,16 +1616,17 @@ class SheepdogDriverTestCase(test.TestCase):
         image_meta = {}
         image_service = ''
 
-        fake_is_cloneable.side_effect = lambda *args: False
+        fake_is_cloneable.return_value = (False, False)
         result = self.driver.clone_image(
             context, fake_vol, image_location, image_meta, image_service)
         self.assertEqual(({}, False), result)
 
     @mock.patch.object(sheepdog.SheepdogClient, '_run_dog')
-    @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
+    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
     @mock.patch.object(sheepdog, 'LOG')
-    def test_clone_image_create_volume_fail(self, fake_logger,
-                                            fake_create_volume, fake_execute):
+    def test_clone_image_create_from_snapshot_fail(self, fake_logger,
+                                                   fake_create_volume,
+                                                   fake_execute):
         context = {}
         fake_vol = self.test_data.TEST_VOLUME
         fake_location = 'sheepdog://%s' % self.test_data.TEST_VOLUME.id
@@ -1599,13 +1635,13 @@ class SheepdogDriverTestCase(test.TestCase):
                       'size': self.test_data.TEST_VOLUME.size,
                       'disk_format': 'raw'}
         image_service = ''
-        stdout = self.test_data.IS_CLONEABLE_TRUE
+        stdout = self.test_data.IS_CLONEABLE_SNAPSHOT
         stderr = ''
 
-        error = exception.VolumeBackendAPIException(data='error')
-        fake_create_volume.side_effect = error
+        fake_create_volume.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout=stdout, stderr=stderr)
         fake_execute.return_value = (stdout, stderr)
-        self.assertRaises(exception.VolumeBackendAPIException,
+        self.assertRaises(exception.SheepdogCmdError,
                           self.driver.clone_image,
                           context, fake_vol, image_location,
                           image_meta, image_service)
@@ -1613,12 +1649,11 @@ class SheepdogDriverTestCase(test.TestCase):
         self.assertTrue(fake_logger.error.called)
 
     @mock.patch.object(sheepdog.SheepdogClient, '_run_dog')
-    @mock.patch.object(sheepdog.SheepdogClient, 'resize')
     @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
     @mock.patch.object(sheepdog, 'LOG')
-    def test_clone_image_resize_fail(self, fake_logger,
-                                     fake_create_cloned_volume, fake_resize,
-                                     fake_execute):
+    def test_clone_image_create_from_volume_fail(self, fake_logger,
+                                                 fake_create_volume,
+                                                 fake_execute):
         context = {}
         fake_vol = self.test_data.TEST_VOLUME
         fake_location = 'sheepdog://%s' % self.test_data.TEST_VOLUME.id
@@ -1627,51 +1662,17 @@ class SheepdogDriverTestCase(test.TestCase):
                       'size': self.test_data.TEST_VOLUME.size,
                       'disk_format': 'raw'}
         image_service = ''
-        stdout = self.test_data.IS_CLONEABLE_TRUE
+        stdout = self.test_data.IS_CLONEABLE_VOLUME
         stderr = ''
 
-        error = exception.VolumeBackendAPIException(data='error')
-        fake_resize.side_effect = error
+        fake_create_volume.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout=stdout, stderr=stderr)
         fake_execute.return_value = (stdout, stderr)
-        self.assertRaises(exception.VolumeBackendAPIException,
+        self.assertRaises(exception.SheepdogCmdError,
                           self.driver.clone_image,
                           context, fake_vol, image_location,
                           image_meta, image_service)
-        self.assertEqual(1, fake_resize.call_count)
-        self.assertTrue(fake_logger.error.called)
-
-    @mock.patch.object(sheepdog.SheepdogClient, '_run_dog')
-    @mock.patch.object(sheepdog.SheepdogClient, 'resize')
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
-    @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    @mock.patch.object(sheepdog, 'LOG')
-    def test_clone_image_delete_fail(self, fake_logger,
-                                     fake_create_clone_volume,
-                                     fake_delete, fake_resize,
-                                     fake_execute):
-        context = {}
-        fake_vol = self.test_data.TEST_VOLUME
-        fake_location = 'sheepdog://%s' % self.test_data.TEST_VOLUME.id
-        image_location = (fake_location, None)
-        image_meta = {'id': self.test_data.TEST_VOLUME.id,
-                      'size': self.test_data.TEST_VOLUME.size,
-                      'disk_format': 'raw'}
-        image_service = ''
-        stdout_d = self.test_data.IS_CLONEABLE_TRUE
-        stderr_d = 'dummy'
-        cmd = self.test_data.cmd_dog_vdi_delete(fake_vol.name)
-        exit_code = 2
-
-        error1 = exception.VolumeBackendAPIException(data='error')
-        error2 = exception.SheepdogCmdError(cmd=cmd, exit_code=exit_code,
-                                            stdout=stdout_d, stderr=stderr_d)
-        fake_resize.side_effect = error1
-        fake_delete.side_effect = error2
-        fake_execute.return_value = (stdout_d, stderr_d)
-        self.assertRaises(
-            exception.SheepdogCmdError, self.driver.clone_image,
-            context, fake_vol, image_location, image_meta, image_service)
-        self.assertEqual(1, fake_delete.call_count)
+        self.assertEqual(1, fake_create_volume.call_count)
         self.assertTrue(fake_logger.error.called)
 
     def test_create_volume_from_snapshot(self):

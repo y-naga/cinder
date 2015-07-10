@@ -377,12 +377,15 @@ class SheepdogClient(object):
 
     def _is_cloneable(self, image_location, image_meta):
         """Check the image can be clone or not."""
+
+        _cloneable = False
+        _snapshot = False
         if image_meta['disk_format'] != 'raw':
             LOG.debug('Image clone requires image format to be '
                       '"raw" but image %(image_location)s is %(image_meta)s.',
                       {'image_location': image_location,
                        'image_meta': image_meta['disk_format']})
-            return False
+            return _cloneable, _snapshot
 
         # The image location would be like
         # "sheepdog://Alice"
@@ -392,18 +395,22 @@ class SheepdogClient(object):
             LOG.debug('%(image_location)s does not match the sheepdog format '
                       'reason: %(err)s',
                       {'image_location': image_location, 'err': e})
-            return False
+            return _cloneable, _snapshot
 
         # check whether volume is stored in sheepdog
         (stdout, stderr) = self._run_dog('vdi', 'list', '-r', volume_name)
         if stdout == '':
             LOG.debug('Image %s is not stored in sheepdog', volume_name)
-            return False
+            return _cloneable, _snapshot
+
         if DEFAULT_SNAPNAME not in stdout:
             LOG.debug('Image %s is not a snapshot volume', volume_name)
-            return False
+            _cloneable = True
+            return _cloneable, _snapshot
 
-        return True
+        _cloneable = True
+        _snapshot = True
+        return _cloneable, _snapshot
 
     def _parse_location(self, location):
         """Check Glance and Cinder use the same sheepdog pool or not."""
@@ -527,29 +534,30 @@ class SheepdogDriver(driver.VolumeDriver):
                     image_service):
         """Create a volume efficiently from an existing image."""
         image_location = image_location[0] if image_location else None
-        if not self.client._is_cloneable(image_location, image_meta):
+        (_cloneable, _snapshot) = self.client._is_cloneable(image_location,
+                                                            image_meta)
+        if not _cloneable:
             return {}, False
 
         # The image location would be like
         # "sheepdog://Alice"
-        volume_name = self.client._parse_location(image_location)
-        volume_ref = {'name': volume_name, 'size': image_meta['size']}
+        source_name = self.client._parse_location(image_location)
+        source_vol = {
+            'name': source_name,
+            'size': image_meta['size']
+        }
 
         try:
-            self.create_cloned_volume(volume, volume_ref)
-        # TODO(saeki-masaki) change exception class
-        except exception.VolumeBackendAPIException:
+            if _snapshot:
+                self.client.clone(source_name, DEFAULT_SNAPNAME,
+                                  volume['name'], volume.size)
+            else:
+                self.create_cloned_volume(volume,
+                                          source_vol)
+        except exception.SheepdogCmdError:
             with excutils.save_and_reraise_exception():
                 LOG.error(_LE('Failed to create clone image : %s'),
                           volume.name)
-
-        try:
-            self.client.resize(volume, volume.size)
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Failed to resize cloned volume : %s'),
-                          volume.name)
-                self.client.delete(volume)
 
         vol_path = self.local_path(volume)
         return {'provider_location': vol_path}, True
