@@ -116,6 +116,11 @@ Cluster created at Thu Jun 18 17:24:56 2015
 Epoch Time           Version [Host:Port:V-Nodes,,,]
 2015-06-18 17:24:56      1 [127.0.0.1:7000:128, 127.0.0.1:7001:128]
 """
+
+    DOG_CLUSTER_INFO_SHUTTING_DOWN = """\
+Cluster status: System is shutting down
+"""
+
     DOG_COMMAND_ERROR_FAIL_TO_CONNECT = """\
 failed to connect to 127.0.0.1:7000: Connection refused
 failed to connect to 127.0.0.1:7000: Connection refused
@@ -251,6 +256,30 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertRaises(OSError, self.client._run_dog, *args)
         self.assertTrue(fake_logger.error.called)
 
+        # Test3: os_error because dog command is not executable
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        expected_msg = 'Operation not permitted'
+        expected_errno = errno.EPERM
+        fake_execute.side_effect = OSError(expected_errno, expected_msg)
+        self.assertRaises(OSError, self.client._run_dog, *args)
+        self.assertTrue(fake_logger.error.called)
+
+        # Test4: processutils execution error
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        cmd = self.test_data.CMD_DOG_CLUSTER_INFO
+        exit_code = 1
+        stdout = 'stdout dummy'
+        stderr = 'stderr dummy'
+        expected_msg = self.test_data.sheepdog_cmd_error(
+            cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
+        fake_execute.side_effect = processutils.ProcessExecutionError(
+            cmd=cmd, exit_code=exit_code, stdout=stdout, stderr=stderr)
+        ex = self.assertRaises(exception.SheepdogCmdError,
+                               self.client._run_dog, *args)
+        self.assertEqual(expected_msg, ex.msg)
+
     @mock.patch.object(sheepdog.SheepdogClient, '_run_dog')
     @mock.patch.object(sheepdog, 'LOG')
     def test_check_cluster_status(self, fake_logger, fake_execute):
@@ -300,7 +329,17 @@ class SheepdogClientTestCase(test.TestCase):
                                self.client.check_cluster_status)
         self.assertEqual(expected_reason, ex.kwargs['reason'])
 
-        # Test6: error is caused by failing to connect to sheep process
+        # Test6: cluster status is shutting down
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        stdout = self.test_data.DOG_CLUSTER_INFO_SHUTTING_DOWN
+        expected_reason = _('Invalid sheepdog cluster status.')
+        fake_execute.return_value = (stdout, stderr)
+        ex = self.assertRaises(exception.SheepdogError,
+                               self.client.check_cluster_status)
+        self.assertEqual(expected_reason, ex.kwargs['reason'])
+
+        # Test7: error is caused by failing to connect to sheep process
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         cmd = self.test_data.CMD_DOG_CLUSTER_INFO
@@ -319,7 +358,7 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertEqual(expected_msg, ex.msg)
         self.assertTrue(fake_logger.error.called)
 
-        # Test7: unknown error
+        # Test8: unknown error
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         cmd = self.test_data.CMD_DOG_CLUSTER_INFO
