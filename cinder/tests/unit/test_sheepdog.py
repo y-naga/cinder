@@ -370,13 +370,18 @@ class SheepdogIOWrapperTestCase(test.TestCase):
         self.assertEqual(len(data), self._vdi_wrapper.tell())
 
     def test_seek(self):
+        # Test1: start of the stream
         self._vdi_wrapper.seek(12345)
         self.assertEqual(12345, self._vdi_wrapper.tell())
 
+        # Test2: continue of the stream
         self._vdi_wrapper.seek(-2345, whence=1)
         self.assertEqual(10000, self._vdi_wrapper.tell())
 
-        # This results in negative offset.
+        # Test3: unpupported whence param
+        self.assertRaises(IOError, self._vdi_wrapper.seek, 1000, whence=2)
+
+        # Test4: results in negative offset
         self.assertRaises(IOError, self._vdi_wrapper.seek, -20000, whence=1)
 
     @mock.patch.object(utils, 'execute')
