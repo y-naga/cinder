@@ -240,7 +240,7 @@ class SheepdogClient(object):
                 # To avoid a Sheepdog's bug, now we need to check stderr.
                 # If Sheepdog has been fixed, this check logic is needed
                 # by old Sheepdog users.
-                reason = (_('Failed to connect sheep daemon. '
+                reason = (_('Failed to connect to sheep daemon. '
                           'addr: %(addr)s, port: %(port)s'),
                           {'addr': self.addr, 'port': self.port})
                 raise exception.SheepdogError(reason=reason)
