@@ -125,7 +125,7 @@ class SheepdogClient(object):
                     LOG.error(_LE("Failed to connect to sheep daemon. "
                               "addr: %(addr)s, port: %(port)s"),
                               {'addr': self.addr, 'port': self.port})
-                elif stderr.rstrip().endswith(
+                elif stderr.rstrip('\\n').endswith(
                         self.DOG_RESP_VDI_ALREADY_EXISTS):
                     LOG.error(_LE('Volume already exists. %s'), vdiname)
                 else:
