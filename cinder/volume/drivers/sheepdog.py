@@ -93,12 +93,16 @@ class SheepdogClient(object):
         try:
             (stdout, stderr) = self._run_dog('cluster', 'info')
         except exception.SheepdogCmdError as e:
+            cmd = e.kwargs['cmd']
             stderr = e.kwargs['stderr']
             with excutils.save_and_reraise_exception():
                 if stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
                     msg = _LE('Failed to connect sheep daemon. '
                               'addr: %(addr)s, port: %(port)s')
                     LOG.error(msg, {'addr': self.addr, 'port': self.port})
+                else:
+                    LOG.error(_LE('Failed to check cluster status.'
+                                  '(command: %s)'), cmd)
 
         if stdout.startswith(self.DOG_RESP_CLUSTER_RUNNING):
             LOG.debug('Sheepdog cluster is running.')
