@@ -777,7 +777,22 @@ class SheepdogClientTestCase(test.TestCase):
         self.client.delete_snapshot(*args)
         self.assertTrue(fake_logger.warning.called)
 
+        # NOTE(tishizaki): Sheepdog's bug case.
+        # details are written to Sheepdog driver code.
         # Test4: failed to connect to sheep process
+        fake_logger.reset_mock()
+        fake_execute.reset_mock()
+        stdout = ''
+        stderr = self.test_data.DOG_COMMAND_ERROR_FAIL_TO_CONNECT
+        expected_reason = (_('Failed to connect to sheep daemon. '
+                           'addr: %(addr)s, port: %(port)s'),
+                           {'addr': SHEEP_ADDR, 'port': SHEEP_PORT})
+        fake_execute.return_value = (stdout, stderr)
+        ex = self.assertRaises(exception.SheepdogError,
+                               self.client.delete_snapshot, *args)
+        self.assertEqual(expected_reason, ex.kwargs['reason'])
+
+        # Test5: failed to connect to sheep process
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         exit_code = 2
@@ -794,7 +809,7 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertTrue(fake_logger.error.called)
         self.assertEqual(expected_msg, ex.msg)
 
-        # Test5: unknown error
+        # Test6: unknown error
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         stdout = 'stdout_dummy'
