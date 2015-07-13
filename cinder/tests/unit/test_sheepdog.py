@@ -318,73 +318,75 @@ class FakeImageService(object):
 class SheepdogIOWrapperTestCase(test.TestCase):
     def setUp(self):
         super(SheepdogIOWrapperTestCase, self).setUp()
-        self.volume = {'name': 'volume-2f9b2ff5-987b-4412-a91c-23caaf0d5aff'}
-        self.snapshot_name = 'snapshot-bf452d80-068a-43d7-ba9f-196cf47bd0be'
+        self.client = sheepdog.SheepdogClient(SHEEP_ADDR, SHEEP_PORT)
+        self.test_data = SheepdogDriverTestDataGenerator()
+        self._volume = self.test_data.TEST_VOLUME
+        self._snapshot_name = self.test_data.TEST_SNAPSHOT
 
-        self.vdi_wrapper = sheepdog.SheepdogIOWrapper(
-            self.volume)
-        self.snapshot_wrapper = sheepdog.SheepdogIOWrapper(
-            self.volume, self.snapshot_name)
+        self._vdi_wrapper = sheepdog.SheepdogIOWrapper(
+            self.client, self._volume)
+        self._snapshot_wrapper = sheepdog.SheepdogIOWrapper(
+            self.client, self._volume, self._snapshot_name)
 
     def test_init(self):
-        self.assertEqual(self.volume['name'], self.vdi_wrapper._vdiname)
-        self.assertIsNone(self.vdi_wrapper._snapshot_name)
-        self.assertEqual(0, self.vdi_wrapper._offset)
+        self.assertEqual(self._volume.name, self._vdi_wrapper._vdiname)
+        self.assertIsNone(self._vdi_wrapper._snapshot_name)
+        self.assertEqual(0, self._vdi_wrapper._offset)
 
-        self.assertEqual(self.snapshot_name,
-                         self.snapshot_wrapper._snapshot_name)
+        self.assertEqual(self._snapshot_name,
+                         self._snapshot_wrapper._snapshot_name)
 
     def test_inc_offset_tell(self):
-        self.vdi_wrapper._inc_offset(10)
-        self.vdi_wrapper._inc_offset(10)
-        self.assertEqual(20, self.vdi_wrapper.tell())
+        self._vdi_wrapper._inc_offset(10)
+        self._vdi_wrapper._inc_offset(10)
+        self.assertEqual(20, self._vdi_wrapper.tell())
 
     @mock.patch.object(sheepdog.SheepdogClient, 'read')
     def test_read_vdi(self, fake_read):
         # Test1: read vdi
         data = "data1"
         fake_read.return_value = data
-        self.vdi_wrapper.read()
-        fake_read.assert_called_once_with(self.volume['name'],
+        self._vdi_wrapper.read()
+        fake_read.assert_called_once_with(self._volume.name,
                                           snapname=None,
                                           offset=0, length=None)
-        self.assertEqual(len(data), self.vdi_wrapper.tell())
+        self.assertEqual(len(data), self._vdi_wrapper.tell())
 
         # Test2: read snapshot
         fake_read.reset_mock()
         fake_read.return_value = data
-        self.snapshot_wrapper.read()
-        fake_read.assert_called_once_with(self.volume['name'],
-                                          snapname=self.snapshot_name,
+        self._snapshot_wrapper.read()
+        fake_read.assert_called_once_with(self._volume.name,
+                                          snapname=self._snapshot_name,
                                           offset=0, length=None)
-        self.assertEqual(len(data), self.snapshot_wrapper.tell())
+        self.assertEqual(len(data), self._snapshot_wrapper.tell())
 
     @mock.patch.object(sheepdog.SheepdogClient, 'write')
     def test_write_vdi(self, fake_write):
         data = 'data1'
-        self.vdi_wrapper.write(data)
-        fake_write.assert_called_once_with(self.volume['name'], data, offset=0,
+        self._vdi_wrapper.write(data)
+        fake_write.assert_called_once_with(self._volume.name, data, offset=0,
                                            length=len(data))
-        self.assertEqual(len(data), self.vdi_wrapper.tell())
+        self.assertEqual(len(data), self._vdi_wrapper.tell())
 
     def test_seek(self):
-        self.vdi_wrapper.seek(12345)
-        self.assertEqual(12345, self.vdi_wrapper.tell())
+        self._vdi_wrapper.seek(12345)
+        self.assertEqual(12345, self._vdi_wrapper.tell())
 
-        self.vdi_wrapper.seek(-2345, whence=1)
-        self.assertEqual(10000, self.vdi_wrapper.tell())
+        self._vdi_wrapper.seek(-2345, whence=1)
+        self.assertEqual(10000, self._vdi_wrapper.tell())
 
         # This results in negative offset.
-        self.assertRaises(IOError, self.vdi_wrapper.seek, -20000, whence=1)
+        self.assertRaises(IOError, self._vdi_wrapper.seek, -20000, whence=1)
 
     @mock.patch.object(utils, 'execute')
     def test_flush(self, fake_execute):
         # flush does noting.
-        self.vdi_wrapper.flush()
+        self._vdi_wrapper.flush()
         self.assertFalse(fake_execute.called)
 
     def test_fileno(self):
-        self.assertRaises(IOError, self.vdi_wrapper.fileno)
+        self.assertRaises(IOError, self._vdi_wrapper.fileno)
 
 
 # test for SheeepdogClient Class
@@ -417,14 +419,14 @@ class SheepdogClientTestCase(test.TestCase):
         self.client._run_dog('cluster', 'info')
         fake_execute.assert_called_once_with(*expected_cmd)
 
-        # Test2: success in async
+        # Test2: success in io_process
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         data = "data1"
         expected_cmd = ('env', 'LC_ALL=C', 'LANG=C', 'dog', 'vdi', 'write',
                         '-a', SHEEP_ADDR, '-p', '%d' % SHEEP_PORT,
                         self._vdiname)
-        self.client._run_dog('vdi', 'write', self._vdiname, async=True,
+        self.client._run_dog('vdi', 'write', self._vdiname, io_process=True,
                              data=data)
         fake_execute.assert_called_once_with(*expected_cmd, process_input=data)
 
@@ -437,7 +439,7 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertRaises(OSError, self.client._run_dog, 'cluster', 'info')
         self.assertTrue(fake_logger.error.called)
 
-        # Test4: unknown os_error
+        # Test4: os_error because dog command is not executable
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         fake_execute.side_effect = None
@@ -1297,7 +1299,7 @@ class SheepdogClientTestCase(test.TestCase):
         # Test1: read a Sheepdog VDI successfully
         expected_cmd = ('vdi', 'read', self._vdiname, 0)
         self.client.read(self._vdiname)
-        fake_execute.assert_called_once_with(*expected_cmd, async=True)
+        fake_execute.assert_called_once_with(*expected_cmd, io_process=True)
 
         # Test2: read a Sheepdog VDI successfully with snapshot, offset, length
         fake_execute.reset_mock()
@@ -1305,7 +1307,7 @@ class SheepdogClientTestCase(test.TestCase):
                         1024, 100)
         self.client.read(self._vdiname, snapname=self._snapname, offset=1024,
                          length=100)
-        fake_execute.assert_called_once_with(*expected_cmd, async=True)
+        fake_execute.assert_called_once_with(*expected_cmd, io_process=True)
 
         # Test3: failed to connect sheep process
         fake_logger.reset_mock()
@@ -1374,7 +1376,7 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertTrue(fake_logger.error.called)
         self.assertEqual(expected_msg, ex.msg)
 
-        # Test5: unknown error
+        # Test7: unknown error
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         stderr = 'stderr_dummy'
@@ -1399,14 +1401,14 @@ class SheepdogClientTestCase(test.TestCase):
         expected_cmd = ('vdi', 'write', self._vdiname, 0)
         self.client.write(self._vdiname, data)
         fake_execute.assert_called_once_with(*expected_cmd, data=data,
-                                             async=True)
+                                             io_process=True)
 
         # Test2: write a Sheepdog VDI successfully with offset, length
         fake_execute.reset_mock()
         expected_cmd = ('vdi', 'write', self._vdiname, 10, 2)
         self.client.write(self._vdiname, data, offset=10, length=2)
         fake_execute.assert_called_once_with(*expected_cmd, data=data,
-                                             async=True)
+                                             io_process=True)
 
         # Test3: failed to connect sheep process
         fake_logger.reset_mock()
@@ -1443,7 +1445,7 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertTrue(fake_logger.error.called)
         self.assertEqual(expected_msg, ex.msg)
 
-        # Test6: write offset beyond the end of vdi
+        # Test5: write offset beyond the end of vdi
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         stderr = self.test_data.DOG_VDI_WRITE_OFFSET_BEYOND_END
@@ -1459,7 +1461,7 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertTrue(fake_logger.error.called)
         self.assertEqual(expected_msg, ex.msg)
 
-        # Test5: unknown error
+        # Test6: unknown error
         fake_logger.reset_mock()
         fake_execute.reset_mock()
         stderr = 'stderr_dummy'

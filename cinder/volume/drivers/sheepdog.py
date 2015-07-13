@@ -93,19 +93,20 @@ class SheepdogClient(object):
 
     def _run_dog(self, command, subcommand, *params, **kwargs):
         """Helper method to run dog command
-        :param async:       execute under eventlet.
-        :type async:        boolean
+        :param io_process:  Execute with IO.
+                            if True, to use 'subprocess' module of unpatched.
+        :type io_process:   boolean
         :param data:        Send to opened process.
         :type data:         string
         """
 
-        async = kwargs.pop('async', False)
+        io_process = kwargs.pop('io_process', False)
         data = kwargs.pop('data', None)
         cmd = ('env', 'LC_ALL=C', 'LANG=C', 'dog', command, subcommand,
                '-a', self.addr, '-p', str(self.port)) + params
         try:
-            if async:
-                # XXX(yamada-h):
+            if io_process:
+                # NOTE(y-naga):
                 # processutils.execute causes busy waiting under eventlet.
                 # To avoid wasting CPU resources, it should not be used for
                 # the command which takes long time to execute.
@@ -133,7 +134,7 @@ class SheepdogClient(object):
                 stdout=e.stdout.replace('\n', '\\n'),
                 stderr=e.stderr.replace('\n', '\\n'))
         finally:
-            if async and _processutils_subprocess:
+            if io_process and _processutils_subprocess:
                 processutils.subprocess = _processutils_subprocess
 
     def _run_qemu_img(self, command, *params):
@@ -412,7 +413,7 @@ class SheepdogClient(object):
         if length:
             params.append(length)
         try:
-            return self._run_dog('vdi', 'read', async=True, *params)
+            return self._run_dog('vdi', 'read', io_process=True, *params)
         except exception.SheepdogCmdError as e:
             cmd = e.kwargs['cmd']
             stderr = e.kwargs['stderr']
@@ -444,7 +445,7 @@ class SheepdogClient(object):
         if length:
             params.append(length)
         try:
-            self._run_dog('vdi', 'write', data=data, async=True, *params)
+            self._run_dog('vdi', 'write', data=data, io_process=True, *params)
         except exception.SheepdogCmdError as e:
             cmd = e.kwargs['cmd']
             stderr = e.kwargs['stderr']
@@ -525,9 +526,8 @@ class SheepdogClient(object):
 class SheepdogIOWrapper(io.RawIOBase):
     """File-like object with Sheepdog backend."""
 
-    def __init__(self, volume, snapshot_name=None):
-        self.client = SheepdogClient(CONF.sheepdog_store_address,
-                                     CONF.sheepdog_store_port)
+    def __init__(self, client, volume, snapshot_name=None):
+        self._client = client
         self._vdiname = volume['name']
         self._snapshot_name = snapshot_name
         self._offset = 0
@@ -536,15 +536,15 @@ class SheepdogIOWrapper(io.RawIOBase):
         self._offset += length
 
     def read(self, length=None):
-        data = self.client.read(self._vdiname, snapname=self._snapshot_name,
-                                offset=self._offset, length=length)
+        data = self._client.read(self._vdiname, snapname=self._snapshot_name,
+                                 offset=self._offset, length=length)
         self._inc_offset(len(data))
         return data
 
     def write(self, data):
         length = len(data)
-        self.client.write(self._vdiname, data, offset=self._offset,
-                          length=length)
+        self._client.write(self._vdiname, data, offset=self._offset,
+                           length=length)
         self._inc_offset(length)
         return length
 
@@ -788,12 +788,13 @@ class SheepdogDriver(driver.VolumeDriver):
             raise exception.VolumeBackendAPIException(data=msg)
 
         try:
-            sheepdog_fd = SheepdogIOWrapper(src_volume, temp_snapshot_name)
+            sheepdog_fd = SheepdogIOWrapper(self.client, src_volume,
+                                            temp_snapshot_name)
             backup_service.backup(backup, sheepdog_fd)
         finally:
             self.client.delete_snapshot(src_volume.name, temp_snapshot_name)
 
     def restore_backup(self, context, backup, volume, backup_service):
         """Restore an existing backup to a new or existing volume."""
-        sheepdog_fd = SheepdogIOWrapper(volume)
+        sheepdog_fd = SheepdogIOWrapper(self.client, volume)
         backup_service.restore(backup, volume['id'], sheepdog_fd)
