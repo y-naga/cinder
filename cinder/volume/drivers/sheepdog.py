@@ -22,6 +22,7 @@ SheepDog Volume Driver.
 import errno
 import eventlet
 import io
+import math
 import re
 
 from oslo_concurrency import processutils
@@ -267,13 +268,15 @@ class SheepdogClient(object):
                     LOG.error(_LE('Failed to delete snapshot. (command: %s)'),
                               cmd)
 
-    def clone(self, src_vdiname, src_snapname, dst_vdiname, size):
+    def clone(self, src_vdiname, src_snapname, dst_vdiname, size=None):
+        params = ['-b', 'sheepdog:%(src_vdiname)s:%(src_snapname)s' %
+                  {'src_vdiname': src_vdiname,
+                   'src_snapname': src_snapname},
+                  'sheepdog:%s' % dst_vdiname]
+        if size is not None:
+            params.append('%sG' % size)
         try:
-            self._run_qemu_img('create', '-b',
-                               'sheepdog:%(src_vdiname)s:%(src_snapname)s' %
-                               {'src_vdiname': src_vdiname,
-                                'src_snapname': src_snapname},
-                               'sheepdog:%s' % dst_vdiname, '%sG' % size)
+            self._run_qemu_img('create', *params)
         except exception.SheepdogCmdError as e:
             cmd = e.kwargs['cmd']
             _stderr = e.kwargs['stderr']
@@ -469,6 +472,39 @@ class SheepdogClient(object):
         free_gb = free / units.Gi
 
         return (total_gb, used_gb, free_gb)
+
+    def get_vdi_size(self, vdiname):
+        """Get size(GB) of volume."""
+        try:
+            (_stdout, _stderr) = self._run_dog('vdi', 'list', '-r', vdiname)
+        except exception.SheepdogCmdError as e:
+            _stderr = e.kwargs['stderr']
+            with excutils.save_and_reraise_exception():
+                if _stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
+                    LOG.exception(_LE('Failed to connect sheep daemon. '
+                                  'addr: %(addr)s, port: %(port)s'),
+                                  {'addr': self.addr, 'port': self.port})
+                else:
+                    LOG.exception(_LE('Failed to get vdi size. '
+                                      'vdi: %(vdiname)s, addr: %(addr)s, '
+                                      'port: %(port)s'),
+                                  {'vdiname': vdiname, 'addr': self.addr,
+                                   'port': self.port})
+
+        # Delete snapshots of record from list
+        r = re.compile('^s .*', re.MULTILINE)
+        _stdout = re.sub(r, '', _stdout).strip()
+        if not _stdout:
+            raise exception.NotFound(_('Not found vdi. vdi: %s') % vdiname)
+
+        try:
+            size = float(_stdout.split(' ')[3])
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE('Failed to parse stdout of '
+                                  '"dog vdi list -r". stdout: %s'), _stdout)
+
+        return int(math.ceil(size / units.Gi))
 
 
 class SheepdogIOWrapper(io.RawIOBase):
@@ -789,3 +825,47 @@ class SheepdogDriver(driver.VolumeDriver):
         """Restore an existing backup to a new or existing volume."""
         sheepdog_fd = SheepdogIOWrapper(volume)
         backup_service.restore(backup, volume.id, sheepdog_fd)
+
+    def manage_existing(self, volume, existing_ref):
+        """Manages an existing volume.
+
+        Renames the vdi name to match the expected name for the volume.
+        Error checking done by manage_existing_get_size is not repeated.
+        """
+        source_name = existing_ref['source-name']
+
+        snapshot_name = 'temp-snapshot-' + source_name
+        try:
+            self.client.create_snapshot(source_name, snapshot_name)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to create temporary snapshot for '
+                              'volume "%s".'), source_name)
+        try:
+            self.client.clone(source_name, snapshot_name, volume.name)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to clone volume %s.'), volume.name)
+        finally:
+            self.client.delete_snapshot(source_name, snapshot_name)
+
+        self.client.delete(source_name)
+
+    def manage_existing_get_size(self, volume, existing_ref):
+        """Return size of an existing volume for manage_existing."""
+        if 'source-name' in existing_ref and existing_ref['source-name']:
+            source_name = existing_ref['source-name']
+        else:
+            reason = _("Reference must contain source-name.")
+            raise exception.ManageExistingInvalidReference(
+                existing_ref=existing_ref,
+                reason=reason)
+
+        try:
+            size_gb = self.client.get_vdi_size(source_name)
+        except exception.NotFound:
+            reason = _("Specified volume of source-name does not exist.")
+            raise exception.ManageExistingInvalidReference(
+                existing_ref=existing_ref, reason=reason)
+
+        return size_gb
