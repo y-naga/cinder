@@ -21,6 +21,7 @@ SheepDog Volume Driver.
 """
 import errno
 import eventlet
+import math
 import io
 import re
 
@@ -470,6 +471,36 @@ class SheepdogClient(object):
 
         return (total_gb, used_gb, free_gb)
 
+    def get_vdi_size(self, vdiname):
+        """Get size(GB) of volume."""
+        try:
+            (_stdout, _stderr) = self._run_dog('vdi', 'list', '-r', vdiname)
+        except exception.SheepdogCmdError as e:
+            _stderr = e.kwargs['stderr']
+            with excutils.save_and_reraise_exception():
+                if _stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
+                    LOG.exception(_LE('Failed to connect sheep daemon. '
+                                  'addr: %(addr)s, port: %(port)s'),
+                                  {'addr': self.addr, 'port': self.port})
+                else:
+                    LOG.exception(_LE('Failed to get vdi size. '
+                                  'vdi: %(vdiname)s, addr: %(addr)s, '
+                                  'port: %(port)s'),
+                                  {'vdiname': vdiname, 'addr': self.addr,
+                                   'port': self.port})
+
+        if not _stdout:
+            raise exception.NotFound()
+
+        try:
+            size = float(_stdout.split(' ')[3])
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE('Failed to parse stdout of '
+                                  '"dog vdi list -r". stdout: %s'), _stdout)
+
+        return int(math.ceil(size / units.Gi))
+
 
 class SheepdogIOWrapper(io.RawIOBase):
     """File-like object with Sheepdog backend."""
@@ -616,17 +647,13 @@ class SheepdogDriver(driver.VolumeDriver):
     def create_cloned_volume(self, volume, src_vref):
         """Clone a sheepdog volume from another volume."""
 
+        src_vdiname = self._get_target_vdi(src_vref)
         snapshot_name = 'temp-snapshot-' + src_vref['name']
-        snapshot = {
-            'name': snapshot_name,
-            'volume_name': src_vref['name'],
-            'volume_size': src_vref['size'],
-        }
 
-        self.client.create_snapshot(snapshot['volume_name'], snapshot_name)
+        self.client.create_snapshot(src_vdiname, snapshot_name)
 
         try:
-            self.client.clone(snapshot['volume_name'], snapshot_name,
+            self.client.clone(src_vdiname, snapshot_name,
                               volume.name, volume.size)
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -634,7 +661,7 @@ class SheepdogDriver(driver.VolumeDriver):
                           volume.name)
         finally:
             # Delete temp Snapshot
-            self.client.delete_snapshot(snapshot['volume_name'], snapshot_name)
+            self.client.delete_snapshot(src_vdiname, snapshot_name)
 
     def create_volume(self, volume):
         """Create a sheepdog volume."""
@@ -647,7 +674,7 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def delete_volume(self, volume):
         """Delete a logical volume."""
-        self.client.delete(volume.name)
+        self.client.delete(self._get_target_vdi(volume))
 
     def copy_image_to_volume(self, context, volume, image_service, image_id):
         with image_utils.temporary_file() as tmp:
@@ -682,7 +709,12 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def create_snapshot(self, snapshot):
         """Create a sheepdog snapshot."""
-        self.client.create_snapshot(snapshot.volume_name, snapshot.name)
+        volume_metadata = snapshot.volume.metadata
+        if 'target_vdi' in volume_metadata:
+            vdiname = volume_metadata['target_vdi']
+        else:
+            vdiname = snapshot.volume_name
+        self.client.create_snapshot(vdiname, snapshot.name)
 
     def delete_snapshot(self, snapshot):
         """Delete a sheepdog snapshot."""
@@ -789,3 +821,51 @@ class SheepdogDriver(driver.VolumeDriver):
         """Restore an existing backup to a new or existing volume."""
         sheepdog_fd = SheepdogIOWrapper(volume)
         backup_service.restore(backup, volume.id, sheepdog_fd)
+
+    def _get_volume_metadata(self, volume):
+        volume_metadata = {}
+        if 'volume_metadata' in volume:
+            for metadata in volume['volume_metadata']:
+                volume_metadata[metadata['key']] = metadata['value']
+        return volume_metadata
+
+    def _get_target_vdi(self, volume):
+        volume_metadata = self._get_volume_metadata(volume)
+        if 'target_vdi' in volume_metadata:
+            LOG.debug('Got vdi related to volume. '
+                      'volume:%(volume)s vdi:%(vdi)s',
+                      {'volume': volume.name,
+                       'vdi': volume_metadata['target_vdi']})
+            return volume_metadata['target_vdi']
+        else:
+            LOG.debug('vdi is same name as volume %s.', volume.name)
+            return volume.name
+
+    def manage_existing(self, volume, existing_ref):
+        """Manages an existing volume."""
+        source_name = existing_ref['source-name']
+
+        volume_metadata = self._get_volume_metadata(volume)
+        volume_metadata['target_vdi'] = source_name
+        model_update = {'metadata': volume_metadata}
+
+        return model_update
+
+    def manage_existing_get_size(self, volume, existing_ref):
+        """Return size of an existing volume for manage_existing."""
+        if 'source-name' in existing_ref:
+            source_name = existing_ref['source-name']
+        else:
+            reason = _("Reference must contain source-name.")
+            raise exception.ManageExistingInvalidReference(
+                existing_ref=existing_ref,
+                reason=reason)
+
+        try:
+            size_gb = self.client.get_vdi_size(source_name)
+        except exception.NotFound:
+            reason = _("Specified volume of source-name does not exist.")
+            raise exception.ManageExistingInvalidReference(
+                existing_ref=existing_ref, reason=reason)
+
+        return size_gb
