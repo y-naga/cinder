@@ -474,14 +474,14 @@ class SheepdogClient(object):
         return (total_gb, used_gb, free_gb)
 
     def get_vdi_size(self, vdiname):
-        """Get size(GB) of volume."""
+        """Get size(GB) of the volume."""
         try:
             (_stdout, _stderr) = self._run_dog('vdi', 'list', '-r', vdiname)
         except exception.SheepdogCmdError as e:
             _stderr = e.kwargs['stderr']
             with excutils.save_and_reraise_exception():
                 if _stderr.startswith(self.DOG_RESP_CONNECTION_ERROR):
-                    LOG.exception(_LE('Failed to connect sheep daemon. '
+                    LOG.exception(_LE('Failed to connect to sheep daemon. '
                                   'addr: %(addr)s, port: %(port)s'),
                                   {'addr': self.addr, 'port': self.port})
                 else:
@@ -491,7 +491,7 @@ class SheepdogClient(object):
                                   {'vdiname': vdiname, 'addr': self.addr,
                                    'port': self.port})
 
-        # Delete snapshots of record from list
+        # Omit the snapshot entries from the list
         r = re.compile('^s .*', re.MULTILINE)
         _stdout = re.sub(r, '', _stdout).strip()
         if not _stdout:
@@ -505,6 +505,28 @@ class SheepdogClient(object):
                                   '"dog vdi list -r". stdout: %s'), _stdout)
 
         return int(math.ceil(size / units.Gi))
+
+    def rename(self, old_vdi_name, new_vdi_name):
+        """Rename vdi name."""
+        snapshot_name = 'temp-rename-snapshot-' + old_vdi_name
+        try:
+            self.create_snapshot(old_vdi_name, snapshot_name)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to create temporary snapshot for '
+                              'rename "%s".'), old_vdi_name)
+        try:
+            self.clone(old_vdi_name, snapshot_name, new_vdi_name)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to clone for rename from '
+                              '"%(old_vdi_name)s" to "%(new_vdi_name)s".'),
+                          {'old_vdi_name': old_vdi_name,
+                           'new_vdi_name': new_vdi_name})
+        finally:
+            self.delete_snapshot(old_vdi_name, snapshot_name)
+
+        self.delete(old_vdi_name)
 
 
 class SheepdogIOWrapper(io.RawIOBase):
@@ -832,24 +854,7 @@ class SheepdogDriver(driver.VolumeDriver):
         Renames the vdi name to match the expected name for the volume.
         Error checking done by manage_existing_get_size is not repeated.
         """
-        source_name = existing_ref['source-name']
-
-        snapshot_name = 'temp-snapshot-' + source_name
-        try:
-            self.client.create_snapshot(source_name, snapshot_name)
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Failed to create temporary snapshot for '
-                              'volume "%s".'), source_name)
-        try:
-            self.client.clone(source_name, snapshot_name, volume.name)
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Failed to clone volume %s.'), volume.name)
-        finally:
-            self.client.delete_snapshot(source_name, snapshot_name)
-
-        self.client.delete(source_name)
+        self.client.rename(existing_ref['source-name'], volume.name)
 
     def manage_existing_get_size(self, volume, existing_ref):
         """Return size of an existing volume for manage_existing."""
@@ -869,3 +874,7 @@ class SheepdogDriver(driver.VolumeDriver):
                 existing_ref=existing_ref, reason=reason)
 
         return size_gb
+
+    def unmanage(self, volume):
+        """Removes the specified volume from Cinder management."""
+        self.client.rename(volume.name, volume.name + '-unmanaged')

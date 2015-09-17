@@ -1751,6 +1751,62 @@ class SheepdogClientTestCase(test.TestCase):
         self.assertTrue(fake_logger.exception.called)
         self.assertEqual(expected_msg, ex.msg)
 
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
+    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
+    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
+    def test_rename_success(self, fake_create_snapshot, fake_clone,
+                            fake_delete_snapshot, fake_delete):
+        old_vdi_name = self._vdiname
+        new_vdi_name = self.test_data.TEST_EXISTING_REF['source-name']
+        snapshot_name = 'temp-rename-snapshot-' + old_vdi_name
+
+        self.client.rename(old_vdi_name, new_vdi_name)
+        fake_create_snapshot.assert_called_once_with(old_vdi_name,
+                                                     snapshot_name)
+        fake_clone.assert_called_once_with(old_vdi_name, snapshot_name,
+                                           new_vdi_name)
+        fake_delete_snapshot.assert_called_once_with(old_vdi_name,
+                                                     snapshot_name)
+        fake_delete.assert_called_once_with(old_vdi_name)
+
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
+    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
+    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
+    @mock.patch.object(sheepdog, 'LOG')
+    def test_rename_failed_create_snapshot(self, fake_logger,
+                                           fake_create_snapshot, fake_clone,
+                                           fake_delete_snapshot, fake_delete):
+        old_vdi_name = self._vdiname
+        new_vdi_name = self.test_data.TEST_EXISTING_REF['source-name']
+        fake_create_snapshot.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout='out dummy', stderr='err dummy')
+
+        self.assertRaises(exception.SheepdogCmdError,
+                          self.client.rename, old_vdi_name, new_vdi_name)
+        self.assertTrue(fake_logger.error.called)
+
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
+    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
+    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
+    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
+    @mock.patch.object(sheepdog, 'LOG')
+    def test_rename_failed_clone(self, fake_logger, fake_create_snapshot,
+                                 fake_clone, fake_delete_snapshot,
+                                 fake_delete):
+        old_vdi_name = self._vdiname
+        new_vdi_name = self.test_data.TEST_EXISTING_REF['source-name']
+        snapshot_name = 'temp-rename-snapshot-' + old_vdi_name
+        fake_clone.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout='out dummy', stderr='err dummy')
+
+        self.assertRaises(exception.SheepdogCmdError,
+                          self.client.rename, old_vdi_name, new_vdi_name)
+        fake_delete_snapshot.assert_called_once_with(old_vdi_name,
+                                                     snapshot_name)
+        self.assertTrue(fake_logger.error.called)
+
 
 class SheepdogDriverTestCase(test.TestCase):
     def setUp(self):
@@ -2163,94 +2219,42 @@ class SheepdogDriverTestCase(test.TestCase):
         self.assertEqual(fake_volume.id, call_volume_id)
         self.assertIsInstance(call_sheepdog_fd, sheepdog.SheepdogIOWrapper)
 
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
-    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
-    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
-    def test_manage_existing_success(self, fake_create_snapshot, fake_clone,
-                                     fake_delete_snapshot, fake_delete):
-        vol = self.test_data.TEST_VOLUME
-        ref = self.test_data.TEST_EXISTING_REF
-        source_name = ref['source-name']
-        snapshot_name = 'temp-snapshot-' + source_name
+    @mock.patch.object(sheepdog.SheepdogClient, 'rename')
+    def test_manage_existing_success(self, fake_rename):
+        fake_volume = self.test_data.TEST_VOLUME
+        fake_ref = self.test_data.TEST_EXISTING_REF
 
-        self.driver.manage_existing(vol, ref)
-        fake_create_snapshot.assert_called_once_with(source_name,
-                                                     snapshot_name)
-        fake_clone.assert_called_once_with(source_name, snapshot_name,
-                                           vol.name)
-        fake_delete_snapshot.assert_called_once_with(source_name,
-                                                     snapshot_name)
-        fake_delete.assert_called_once_with(source_name)
-
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
-    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
-    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
-    @mock.patch.object(sheepdog, 'LOG')
-    def test_manage_existing_failed_create_snapshot(self, fake_logger,
-                                                    fake_create_snapshot,
-                                                    fake_clone,
-                                                    fake_delete_snapshot,
-                                                    fake_delete):
-        vol = self.test_data.TEST_VOLUME
-        ref = self.test_data.TEST_EXISTING_REF
-        fake_create_snapshot.side_effect = exception.SheepdogCmdError(
-            cmd='dummy', exit_code=1, stdout='out dummy', stderr='err dummy')
-
-        self.assertRaises(exception.SheepdogCmdError,
-                          self.driver.manage_existing, vol, ref)
-        self.assertTrue(fake_logger.error.called)
-
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete_snapshot')
-    @mock.patch.object(sheepdog.SheepdogClient, 'clone')
-    @mock.patch.object(sheepdog.SheepdogClient, 'create_snapshot')
-    @mock.patch.object(sheepdog, 'LOG')
-    def test_manage_existing_failed_clone(self, fake_logger,
-                                          fake_create_snapshot,
-                                          fake_clone, fake_delete_snapshot,
-                                          fake_delete):
-        vol = self.test_data.TEST_VOLUME
-        ref = self.test_data.TEST_EXISTING_REF
-        source_name = ref['source-name']
-        snapshot_name = 'temp-snapshot-' + source_name
-        fake_clone.side_effect = exception.SheepdogCmdError(
-            cmd='dummy', exit_code=1, stdout='out dummy', stderr='err dummy')
-
-        self.assertRaises(exception.SheepdogCmdError,
-                          self.driver.manage_existing, vol, ref)
-        fake_delete_snapshot.assert_called_once_with(source_name,
-                                                     snapshot_name)
-        self.assertTrue(fake_logger.error.called)
+        self.driver.manage_existing(fake_volume, fake_ref)
+        fake_rename.assert_called_once_with(fake_ref['source-name'],
+                                            fake_volume.name)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     def test_manage_existing_get_size_success(self, fake_get_vdi_size):
         fake_get_vdi_size.return_value = 10
-        ref = self.test_data.TEST_EXISTING_REF
+        fake_ref = self.test_data.TEST_EXISTING_REF
 
         size = self.driver.manage_existing_get_size(self.test_data.TEST_VOLUME,
-                                                    ref)
-        fake_get_vdi_size.assert_called_once_with(ref['source-name'])
+                                                    fake_ref)
+        fake_get_vdi_size.assert_called_once_with(fake_ref['source-name'])
         self.assertEqual(10, size)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     def test_manage_existing_get_size_sourcename_key_empty(
             self, fake_get_vdi_size):
-        ref = {'source-id': ''}
+        fake_ref = {'source-id': ''}
 
         self.assertRaises(exception.ManageExistingInvalidReference,
                           self.driver.manage_existing_get_size,
-                          self.test_data.TEST_VOLUME, ref)
+                          self.test_data.TEST_VOLUME, fake_ref)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     def test_manage_existing_get_size_sourcename_value_empty(
             self, fake_get_vdi_size):
-        ref = {'source-name': '', 'source-id': ''}
+        fake_ref = {'source-name': '', 'source-id': ''}
 
         self.assertRaises(exception.ManageExistingInvalidReference,
                           self.driver.manage_existing_get_size,
-                          self.test_data.TEST_VOLUME, ref)
+                          self.test_data.TEST_VOLUME, fake_ref)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     def test_manage_existing_get_size_vdi_not_found(
@@ -2261,3 +2265,11 @@ class SheepdogDriverTestCase(test.TestCase):
                           self.driver.manage_existing_get_size,
                           self.test_data.TEST_VOLUME,
                           self.test_data.TEST_EXISTING_REF)
+
+    @mock.patch.object(sheepdog.SheepdogClient, 'rename')
+    def test_unmanage_success(self, fake_rename):
+        fake_volume = self.test_data.TEST_VOLUME
+        new_volume_name = fake_volume.name + '-unmanaged'
+
+        self.driver.unmanage(fake_volume)
+        fake_rename.assert_called_once_with(fake_volume.name, new_volume_name)
