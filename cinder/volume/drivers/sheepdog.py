@@ -37,6 +37,7 @@ from cinder.i18n import _, _LE, _LW
 from cinder.image import image_utils
 from cinder import utils
 from cinder.volume import driver
+from cinder.volume import utils as volutils
 
 # snapshot name of glance image
 GLANCE_SNAPNAME = 'glance-image'
@@ -854,7 +855,13 @@ class SheepdogDriver(driver.VolumeDriver):
         Renames the vdi name to match the expected name for the volume.
         Error checking done by manage_existing_get_size is not repeated.
         """
-        self.client.rename(existing_ref['source-name'], volume.name)
+        source_name = existing_ref['source-name']
+
+        if volutils.check_already_managed_volume(self.db, source_name):
+            raise exception.ManageExistingAlreadyManaged(
+                volume_ref=source_name)
+
+        self.client.rename(source_name, volume.name)
 
     def manage_existing_get_size(self, volume, existing_ref):
         """Return size of an existing volume for manage_existing."""

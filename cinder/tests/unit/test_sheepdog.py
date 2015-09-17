@@ -36,6 +36,7 @@ from cinder.tests.unit import fake_volume
 from cinder import utils
 from cinder.volume import configuration as conf
 from cinder.volume.drivers import sheepdog
+from cinder.volume import utils as volutils
 
 SHEEP_ADDR = '127.0.0.1'
 SHEEP_PORT = 7000
@@ -2220,13 +2221,29 @@ class SheepdogDriverTestCase(test.TestCase):
         self.assertIsInstance(call_sheepdog_fd, sheepdog.SheepdogIOWrapper)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'rename')
-    def test_manage_existing_success(self, fake_rename):
+    @mock.patch.object(volutils, 'check_already_managed_volume')
+    def test_manage_existing_success(self, fake_check_already_managed_volume,
+                                     fake_rename):
         fake_volume = self.test_data.TEST_VOLUME
         fake_ref = self.test_data.TEST_EXISTING_REF
+        fake_check_already_managed_volume.return_value = False
 
         self.driver.manage_existing(fake_volume, fake_ref)
+        fake_check_already_managed_volume.assert_called_once_with(
+            self.db, fake_ref['source-name'])
         fake_rename.assert_called_once_with(fake_ref['source-name'],
                                             fake_volume.name)
+
+    @mock.patch.object(sheepdog.SheepdogClient, 'rename')
+    @mock.patch.object(volutils, 'check_already_managed_volume')
+    def test_manage_existing_fail_already_managed_volume(
+            self, fake_check_already_managed_volume, fake_rename):
+        fake_volume = self.test_data.TEST_VOLUME
+        fake_ref = self.test_data.TEST_EXISTING_REF
+        fake_check_already_managed_volume.return_value = True
+        self.assertRaises(exception.ManageExistingAlreadyManaged,
+                          self.driver.manage_existing,
+                          fake_volume, fake_ref)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     def test_manage_existing_get_size_success(self, fake_get_vdi_size):
