@@ -2245,6 +2245,24 @@ class SheepdogDriverTestCase(test.TestCase):
                           self.driver.manage_existing,
                           fake_volume, fake_ref)
 
+    @mock.patch.object(sheepdog.SheepdogClient, 'rename')
+    @mock.patch.object(volutils, 'check_already_managed_volume')
+    @mock.patch.object(sheepdog, 'LOG')
+    def test_manage_existing_fail_rename(self, fake_logger,
+                                         fake_check_already_managed_volume,
+                                         fake_rename):
+        fake_volume = self.test_data.TEST_VOLUME
+        fake_ref = self.test_data.TEST_EXISTING_REF
+        fake_check_already_managed_volume.return_value = False
+        fake_rename.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout='dummy', stderr='dummy')
+
+        self.assertRaises(exception.SheepdogCmdError,
+                          self.driver.manage_existing, fake_volume, fake_ref)
+        self.assertTrue(fake_logger.exception.called)
+        self.assertTrue(fake_check_already_managed_volume.called)
+        self.assertTrue(fake_rename.called)
+
     @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     def test_manage_existing_get_size_success(self, fake_get_vdi_size):
         fake_get_vdi_size.return_value = 10
@@ -2290,3 +2308,15 @@ class SheepdogDriverTestCase(test.TestCase):
 
         self.driver.unmanage(fake_volume)
         fake_rename.assert_called_once_with(fake_volume.name, new_volume_name)
+
+    @mock.patch.object(sheepdog.SheepdogClient, 'rename')
+    @mock.patch.object(sheepdog, 'LOG')
+    def test_unmanage_fail_rename(self, fake_logger, fake_rename):
+        fake_volume = self.test_data.TEST_VOLUME
+        fake_rename.side_effect = exception.SheepdogCmdError(
+            cmd='dummy', exit_code=1, stdout='dummy', stderr='dummy')
+
+        self.assertRaises(exception.SheepdogCmdError, self.driver.unmanage,
+                          fake_volume)
+        self.assertTrue(fake_logger.exception.called)
+        self.assertTrue(fake_rename.called)

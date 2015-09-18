@@ -861,7 +861,12 @@ class SheepdogDriver(driver.VolumeDriver):
             raise exception.ManageExistingAlreadyManaged(
                 volume_ref=source_name)
 
-        self.client.rename(source_name, volume.name)
+        try:
+            self.client.rename(source_name, volume.name)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE('Failed to manage existing volume. "%s"'),
+                              source_name)
 
     def manage_existing_get_size(self, volume, existing_ref):
         """Return size of an existing volume for manage_existing."""
@@ -884,4 +889,9 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def unmanage(self, volume):
         """Removes the specified volume from Cinder management."""
-        self.client.rename(volume.name, volume.name + '-unmanaged')
+        try:
+            self.client.rename(volume.name, volume.name + '-unmanaged')
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE('Failed to unmanage volume. "%s"'),
+                              volume.name)
