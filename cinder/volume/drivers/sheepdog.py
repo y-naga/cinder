@@ -269,15 +269,13 @@ class SheepdogClient(object):
                     LOG.error(_LE('Failed to delete snapshot. (command: %s)'),
                               cmd)
 
-    def clone(self, src_vdiname, src_snapname, dst_vdiname, size=None):
-        params = ['-b', 'sheepdog:%(src_vdiname)s:%(src_snapname)s' %
-                  {'src_vdiname': src_vdiname,
-                   'src_snapname': src_snapname},
-                  'sheepdog:%s' % dst_vdiname]
-        if size is not None:
-            params.append('%sG' % size)
+    def clone(self, src_vdiname, src_snapname, dst_vdiname, size):
         try:
-            self._run_qemu_img('create', *params)
+            self._run_qemu_img('create', '-b',
+                               'sheepdog:%(src_vdiname)s:%(src_snapname)s' %
+                               {'src_vdiname': src_vdiname,
+                                'src_snapname': src_snapname},
+                               'sheepdog:%s' % dst_vdiname, '%sG' % size)
         except exception.SheepdogCmdError as e:
             cmd = e.kwargs['cmd']
             _stderr = e.kwargs['stderr']
@@ -506,28 +504,6 @@ class SheepdogClient(object):
                                   '"dog vdi list -r". stdout: %s'), _stdout)
 
         return int(math.ceil(size / units.Gi))
-
-    def rename(self, old_vdi_name, new_vdi_name):
-        """Rename vdi name."""
-        snapshot_name = 'temp-rename-snapshot-' + old_vdi_name
-        try:
-            self.create_snapshot(old_vdi_name, snapshot_name)
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Failed to create temporary snapshot for '
-                              'rename "%s".'), old_vdi_name)
-        try:
-            self.clone(old_vdi_name, snapshot_name, new_vdi_name)
-        except Exception:
-            with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Failed to clone for rename from '
-                              '"%(old_vdi_name)s" to "%(new_vdi_name)s".'),
-                          {'old_vdi_name': old_vdi_name,
-                           'new_vdi_name': new_vdi_name})
-        finally:
-            self.delete_snapshot(old_vdi_name, snapshot_name)
-
-        self.delete(old_vdi_name)
 
 
 class SheepdogIOWrapper(io.RawIOBase):
@@ -861,7 +837,21 @@ class SheepdogDriver(driver.VolumeDriver):
             raise exception.ManageExistingAlreadyManaged(
                 volume_ref=source_name)
 
-        self.client.rename(source_name, volume.name)
+        try:
+            size_gb = self.client.get_vdi_size(source_name)
+            volume.size = size_gb
+            vref = {'name': source_name, 'size': size_gb}
+            self.create_cloned_volume(volume, vref)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to manage existing volume. '
+                              'source_name: %s.'), source_name)
+        try:
+            self.client.delete(source_name)
+        except Exception:
+            LOG.warning(_LW('Failed to delete working backend volume.'
+                            'It remains as trash. source_name: %s'),
+                        source_name)
 
     def manage_existing_get_size(self, volume, existing_ref):
         """Return size of an existing volume for manage_existing."""
@@ -884,4 +874,19 @@ class SheepdogDriver(driver.VolumeDriver):
 
     def unmanage(self, volume):
         """Removes the specified volume from Cinder management."""
-        self.client.rename(volume.name, volume.name + '-unmanaged')
+        source_name = volume.name
+        vref = {'name': source_name, 'size': volume.size}
+        volume.name_id += '-unmanaged'
+
+        try:
+            self.create_cloned_volume(volume, vref)
+        except Exception:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE('Failed to unmanage volume. volume: %s.'),
+                          source_name)
+
+        try:
+            self.client.delete(source_name)
+        except Exception:
+            LOG.warning(_LW('Failed to delete working backend volume.'
+                            'It remains as trash. volume: %s'), source_name)
