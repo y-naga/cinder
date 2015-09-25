@@ -837,10 +837,8 @@ class SheepdogDriver(driver.VolumeDriver):
             raise exception.ManageExistingAlreadyManaged(
                 volume_ref=source_name)
 
+        vref = {'name': source_name, 'size': volume.size}
         try:
-            size_gb = self.client.get_vdi_size(source_name)
-            volume.size = size_gb
-            vref = {'name': source_name, 'size': size_gb}
             self.create_cloned_volume(volume, vref)
         except Exception:
             with excutils.save_and_reraise_exception():
@@ -870,6 +868,7 @@ class SheepdogDriver(driver.VolumeDriver):
             raise exception.ManageExistingInvalidReference(
                 existing_ref=existing_ref, reason=reason)
 
+        volume.size = size_gb
         return size_gb
 
     def unmanage(self, volume):

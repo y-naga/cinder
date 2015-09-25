@@ -2155,33 +2155,28 @@ class SheepdogDriverTestCase(test.TestCase):
 
     @mock.patch.object(sheepdog.SheepdogClient, 'delete')
     @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     @mock.patch.object(volutils, 'check_already_managed_volume')
     def test_manage_existing_success(self, fake_check_already_managed_volume,
-                                     fake_get_vdi_size,
                                      fake_create_cloned_volume, fake_delete):
         fake_volume = self.test_data.TEST_VOLUME
         fake_existing_ref = self.test_data.TEST_EXISTING_REF
         source_name = fake_existing_ref['source-name']
         fake_vref = {'name': source_name, 'size': fake_volume.size}
         fake_check_already_managed_volume.return_value = False
-        fake_get_vdi_size.return_value = fake_volume.size
 
         self.driver.manage_existing(fake_volume, fake_existing_ref)
         fake_check_already_managed_volume.assert_called_once_with(self.db,
                                                                   source_name)
-        fake_get_vdi_size.assert_called_once_with(source_name)
         fake_create_cloned_volume.assert_called_once_with(fake_volume,
                                                           fake_vref)
         fake_delete.assert_called_once_with(source_name)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'delete')
     @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     @mock.patch.object(volutils, 'check_already_managed_volume')
     def test_manage_existing_fail_already_managed_volume(
-            self, fake_check_already_managed_volume, fake_get_vdi_size,
-            fake_create_cloned_volume, fake_delete):
+            self, fake_check_already_managed_volume, fake_create_cloned_volume,
+            fake_delete):
         fake_volume = self.test_data.TEST_VOLUME
         fake_existing_ref = self.test_data.TEST_EXISTING_REF
         fake_check_already_managed_volume.return_value = True
@@ -2192,35 +2187,11 @@ class SheepdogDriverTestCase(test.TestCase):
 
     @mock.patch.object(sheepdog.SheepdogClient, 'delete')
     @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
-    @mock.patch.object(volutils, 'check_already_managed_volume')
-    @mock.patch.object(sheepdog, 'LOG')
-    def test_manage_existing_fail_get_vdi_size(
-            self, fake_logger, fake_check_already_managed_volume,
-            fake_get_vdi_size, fake_create_cloned_volume, fake_delete):
-        fake_volume = self.test_data.TEST_VOLUME
-        fake_existing_ref = self.test_data.TEST_EXISTING_REF
-        fake_check_already_managed_volume.return_value = False
-        fake_get_vdi_size.side_effect = exception.SheepdogCmdError(
-            cmd='dummy', exit_code=1, stdout='dummy', stderr='dummy')
-
-        self.assertRaises(exception.SheepdogCmdError,
-                          self.driver.manage_existing, fake_volume,
-                          fake_existing_ref)
-        self.assertTrue(fake_logger.error.called)
-        self.assertTrue(fake_check_already_managed_volume.called)
-        self.assertTrue(fake_get_vdi_size.called)
-        self.assertFalse(fake_create_cloned_volume.called)
-        self.assertFalse(fake_delete.called)
-
-    @mock.patch.object(sheepdog.SheepdogClient, 'delete')
-    @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     @mock.patch.object(volutils, 'check_already_managed_volume')
     @mock.patch.object(sheepdog, 'LOG')
     def test_manage_existing_fail_create_cloned_volume(
             self, fake_logger, fake_check_already_managed_volume,
-            fake_get_vdi_size, fake_create_cloned_volume, fake_delete):
+            fake_create_cloned_volume, fake_delete):
         fake_volume = self.test_data.TEST_VOLUME
         fake_existing_ref = self.test_data.TEST_EXISTING_REF
         fake_check_already_managed_volume.return_value = False
@@ -2232,18 +2203,16 @@ class SheepdogDriverTestCase(test.TestCase):
                           fake_existing_ref)
         self.assertTrue(fake_logger.error.called)
         self.assertTrue(fake_check_already_managed_volume.called)
-        self.assertTrue(fake_get_vdi_size.called)
         self.assertTrue(fake_create_cloned_volume.called)
         self.assertFalse(fake_delete.called)
 
     @mock.patch.object(sheepdog.SheepdogClient, 'delete')
     @mock.patch.object(sheepdog.SheepdogDriver, 'create_cloned_volume')
-    @mock.patch.object(sheepdog.SheepdogClient, 'get_vdi_size')
     @mock.patch.object(volutils, 'check_already_managed_volume')
     @mock.patch.object(sheepdog, 'LOG')
     def test_manage_existing_fail_delete(
             self, fake_logger, fake_check_already_managed_volume,
-            fake_get_vdi_size, fake_create_cloned_volume, fake_delete):
+            fake_create_cloned_volume, fake_delete):
         fake_volume = self.test_data.TEST_VOLUME
         fake_existing_ref = self.test_data.TEST_EXISTING_REF
         fake_check_already_managed_volume.return_value = False
@@ -2253,7 +2222,6 @@ class SheepdogDriverTestCase(test.TestCase):
         self.driver.manage_existing(fake_volume, fake_existing_ref)
         self.assertTrue(fake_logger.warning.called)
         self.assertTrue(fake_check_already_managed_volume.called)
-        self.assertTrue(fake_get_vdi_size.called)
         self.assertTrue(fake_create_cloned_volume.called)
         self.assertTrue(fake_delete.called)
 
